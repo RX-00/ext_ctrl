@@ -103,7 +103,7 @@ us = [np.array(0)]
 
 print(env.unwrapped.data.qpos)
 
-exit()
+exit() # just to stop more computation
 
 '''
 Simulation

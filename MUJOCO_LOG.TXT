@@ -27,4 +27,3 @@ WARNING: mju_openResource: unknown file '/home/robo/ext_ctrl/mujoco_test/models/
 
 Wed Jun  7 15:16:07 2023
 WARNING: Nan, Inf or huge value in QVEL at DOF 0. The simulation is unstable. Time = 3.1800.
-

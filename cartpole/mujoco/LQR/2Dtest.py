@@ -19,6 +19,8 @@ from scipy import linalg
 
 '''
 LQR Controller
+
+NOTE: not sure why this works on this 2D model, but not the mujoco sim model
 '''
 # constants and properties of the system
 # NOTE: be sure to make sure these are in line with the .xml mujoco model
