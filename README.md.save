@@ -1,0 +1,10 @@
+# Extended Controller
+Repo for work on extending state-space control methods with reinforcement learning policies
+
+## Systems for testing
+cartpole: inverted pendulum on a cart in mujoco \ cd /home/robo/ext_ctrl_envs ; /usr/bin/env /bin/python /home/robo/.vscode/extensions/ms-python.python-2023.8.0/pythonFiles/lib/python/debugpy/adapter/../../debugpy/launcher 38577 -- /home/robo/ext_ctrl_envs/tests/nonnominal_cartpole_test.py 
+
+slip: spring loaded inverted pendulum in mujoco
+
+## Viewing the renderer
+Using https://github.com/rohanpsingh/mujoco-python-viewer for its interactive renderer

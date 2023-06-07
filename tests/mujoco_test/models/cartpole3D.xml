@@ -1,0 +1,45 @@
+<mujoco model="cartpole3D">
+    <!-- 
+        Degree of Freedoms: 2
+        Actuators: 1
+
+        cartpole simulation in configurable 3D ground plane
+    -->
+
+    <option gravity="0 0 -9.81" integrator="RK4" timestep="0.002"/>
+    <compiler inertiafromgeom="true"/>
+
+    <!-- ground grid plane asset & skybox-->
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512"/>
+        <texture name="grid" type="2d" builtin="checker" rgb1="0.1 0.2 0.3"
+         rgb2="0.2 0.3 0.4" width="500" height="500"/>
+         <material name="grid" texture="grid" texrepeat="8 8" reflectance="0.3"/>
+    </asset>
+
+    <!-- default settings and configurations for the sim-->
+    <default>
+        
+    </default>
+
+    <!-- define world scene of simulation -->
+    <worldbody>
+        <!-- define lights, ground (change zaxis to change ground slope), and fixed camera-->
+        <light name="light0" pos="1 0 0"/>
+        <light name="light1" pos="0 1 0"/>
+        <light name="light2" pos="0 0 1"/>
+        <geom name="ground" type="plane" pos="0 0 -0.5" size="3 3 0.1" material="grid"
+         zaxis="0.0 0.0 0.6" friction="0.0"/>
+        <camera name="fixed" pos="0 -1.3 0.5" xyaxes="1 0 0 0 1 2"/>
+
+        <!-- cart body -->
+        <body name="cart_body" pos="0 0 0.02">
+            <joint name="free" type="free"/>
+            <geom name="cart_geom" type="box" size="0.1 0.1 0.1" rgba="1 0 0 1"/>
+            <site name="pendulum_connection" pos="0 0 0.1"/>
+            <site name="IMU"/>
+        </body>
+
+    </worldbody>
+
+</mujoco>

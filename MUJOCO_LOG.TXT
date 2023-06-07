@@ -1,0 +1,30 @@
+Tue May 30 18:09:13 2023
+WARNING: mju_openResource: unknown file 'humanoid.xml'
+
+Wed May 31 10:04:46 2023
+WARNING: mju_openResource: unknown file 'models/tippe-top.xml'
+
+Wed May 31 10:05:21 2023
+WARNING: mju_openResource: unknown file 'models/humanoid.xml'
+
+Wed May 31 10:05:52 2023
+WARNING: mju_openResource: unknown file '~/ext_ctrl/models/humanoid.xml'
+
+Wed May 31 10:07:18 2023
+WARNING: mju_openResource: unknown file '~/ext_ctrl/mujoco_test/models/humanoid.xml'
+
+Wed May 31 10:07:48 2023
+WARNING: mju_openResource: unknown file 'home/robo/ext_ctrl/mujoco_test/models/humanoid.xml'
+
+Wed May 31 15:45:23 2023
+WARNING: mju_openResource: unknown file './models/cartpole.xml'
+
+Fri Jun  2 08:45:02 2023
+WARNING: mju_openResource: unknown file '/home/robo/ext_ctrl/mujoco_test/models/pinata_n_bat.xml'
+
+Fri Jun  2 09:12:15 2023
+WARNING: mju_openResource: unknown file '/home/robo/ext_ctrl/mujoco_test/models/tippe-top.xml'
+
+Wed Jun  7 15:16:07 2023
+WARNING: Nan, Inf or huge value in QVEL at DOF 0. The simulation is unstable. Time = 3.1800.
+
