@@ -92,13 +92,18 @@ P = linalg.solve_continuous_are(A, B, Q, R)
 # Calculate optimal controller gain
 K = np.dot(np.linalg.inv(R),
            np.dot(B.T, P))
+print(K)
 
 def apply_ctrlr(K, x):
     u = -np.dot(K, x)
     return u
 
-
+# storing ctrl inputs
 us = [np.array(0)]
+
+print(env.unwrapped.data.qpos)
+
+exit()
 
 '''
 Simulation

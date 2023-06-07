@@ -2,8 +2,9 @@
 Repo for work on extending state-space control methods with reinforcement learning policies
 
 ## Systems for testing
-cartpole: inverted pendulum on a cart from gym 0.14.0 \
-          cartpole simulation in mujoco \
+- cartpole: 
+    - inverted pendulum on a cart from gym 0.14.0
+    - cartpole simulation in mujoco \
 slip: spring loaded inverted pendulum in mujoco
 
 ## Custom Envs

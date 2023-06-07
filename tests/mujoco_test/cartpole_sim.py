@@ -1,3 +1,5 @@
+# NOTE: Do not refer to this file
+
 import numpy as np
 import mujoco
 import mujoco_viewer
