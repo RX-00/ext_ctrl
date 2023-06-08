@@ -125,7 +125,7 @@ env.unwrapped.data.qacc = 0 # Asset that there's no acceleration
 mujoco.mj_inverse(env.unwrapped.model, env.unwrapped.data)
 # NOTE: make sure the required forces are achievable by your actuators before
 #       continuing with the LQR controller process
-print(env.unwrapped.data.qfrc_inverse)
+#print(env.unwrapped.data.qfrc_inverse)
 
 # Save the position and control setpoints to linearize around
 qpos0 = env.unwrapped.data.qpos.copy()
@@ -146,15 +146,52 @@ R = np.eye(nu)
 
 # Choosing Q
 nv = env.unwrapped.model.nv # Alias for number of DoFs
+# To determine Q we'll be constructing it as a sum of two terms
+#   term 1: a balancing cost that will keep the CoM over the cart
+#           described by kinematic Jacobians which map b/w joint
+#           space and global Cartesian positions (computed analytically)
+#   term 2: a cost for joints moving away from their initial config
 
+# Calculating term 1
+mujoco.mj_resetData(env.unwrapped.model, env.unwrapped.data)
+env.unwrapped.data.qpos = qpos0
+mujoco.mj_forward(env.unwrapped.model, env.unwrapped.data)
+
+jac_pole = np.zeros((3, nv)) # make Jacobian for pole
+mujoco.mj_jacSubtreeCom(env.unwrapped.model, env.unwrapped.data,
+                        jac_pole, env.unwrapped.model.body('pole_1').id)
+
+jac_cart = np.zeros((3, nv)) # make Jacobian for cart
+mujoco.mj_jacBodyCom(env.unwrapped.model, env.unwrapped.data,
+                     jac_cart, None, env.unwrapped.model.body('cart').id)
+
+jac_diff = jac_pole - jac_cart
+Q_balance_cost = jac_diff.T @ jac_diff # remember, its a quadratic cost
+print(Q_balance_cost)
+
+# Calculating term 2
+# indices of relevant sets of joints 
+# (here we have pole hinge_1: id 1 & cart slider: id 2)
+joint_names = [env.unwrapped.model.joint(i).name
+               for i in range(env.unwrapped.model.njnt)]
+joint_addrs = [env.unwrapped.model.joint(name).dofadr[0]
+                for name in joint_names]
+#print('joint names: ', joint_names)
+#print('joint addrs: ', joint_addrs)
+
+Q_joints_mv_cost = np.eye(nv)
+Q_joints_mv_cost = Q = np.array([[ 0,  0,  0,  0  ],
+                                 [ 0,  1,  0,  0  ],
+                                 [ 0,  0,  0,  0  ],
+                                 [ 0,  0,  0,  1  ]]) 
+
+# Q term
+BALANCE_COST = 100
+Q = BALANCE_COST * Q_balance_cost + Q_joints_mv_cost
 
 # reset sys model
 mujoco.mj_resetData(env.unwrapped.model, env.unwrapped.data)
-#env.unwrapped.data.qpos = qpos0
-#env.unwrapped.data.ctrl = ctrl0
 
-for i in range(500):
-    #env.step(action=ctrl0)
 
 exit() # just to stop more computation
 
