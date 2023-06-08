@@ -29,7 +29,7 @@ lp = 1.0
 mp = 0.1
 mc = 1.0
 
-# state matrix
+# state transition matrix
 a1 = (-12*mp*g) / (13*mc+mp)
 a2 = (12*(mp*g + mc*g)) / (lp*(13*mc + mp))
 A = np.array([[0, 1, 0,  0],
@@ -37,7 +37,7 @@ A = np.array([[0, 1, 0,  0],
               [0, 0, 0,  1],
               [0, 0, a2, 0]])
 
-# input matrix
+# control transition matrix
 b1 = 13 / (13*mc + mp)
 b2 = -12/ (lp*(13*mc + mp))
 B = np.array([[0 ],

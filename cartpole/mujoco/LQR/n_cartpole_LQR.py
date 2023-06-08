@@ -55,7 +55,7 @@ done = False
 
 
 '''
-LQR Controller
+LQR Controller (hand written method)
 '''
 # constants and properties of the system
 # NOTE: be sure to make sure these are in line with the .xml mujoco model
@@ -64,7 +64,7 @@ lp = 1.0
 mp = 0.1
 mc = 1.0
 
-# state matrix
+# state transition matrix
 a1 = (-12*mp*g) / (13*mc+mp)
 a2 = (12*(mp*g + mc*g)) / (lp*(13*mc + mp))
 A = np.array([[0, 1, 0,  0],
@@ -72,7 +72,7 @@ A = np.array([[0, 1, 0,  0],
               [0, 0, 0,  1],
               [0, 0, a2, 0]])
 
-# input matrix
+# control transition matrix
 b1 = 13 / (13*mc + mp)
 b2 = -12/ (lp*(13*mc + mp))
 B = np.array([[0 ],
@@ -92,7 +92,7 @@ P = linalg.solve_continuous_are(A, B, Q, R)
 # Calculate optimal controller gain
 K = np.dot(np.linalg.inv(R),
            np.dot(B.T, P))
-print(K)
+#print(K)
 
 def apply_ctrlr(K, x):
     u = -np.dot(K, x)
@@ -101,7 +101,60 @@ def apply_ctrlr(K, x):
 # storing ctrl inputs
 us = [np.array(0)]
 
-print(env.unwrapped.data.qpos)
+
+
+'''
+LQR Controller (mjData method)
+
+Here we use the desired position of the system (state vector = 0 vector) as
+the setpoint to linearize around to get our state transition matrix A = df/dx,
+where f is some nonlinear dynamics.
+
+We use inverse dynamics to find the best control u to linearize around to find
+the control transition matrix B = df/du
+'''
+# set sys model to init_state
+mujoco.mj_resetDataKeyframe(env.unwrapped.model, env.unwrapped.data, 1)
+# we use mj_forward (forward dynamics function) to find the acceleration given
+# the state and all the forces in the system
+mujoco.mj_forward(env.unwrapped.model, env.unwrapped.data)
+env.unwrapped.data.qacc = 0 # Asset that there's no acceleration
+# The inverse dynamics function takes accel as input and compute the forces
+# required to create the acceleration. Uniquely, MuJoCo's fast inverse dyn.
+# takes into accoun all constraint, including contacts
+mujoco.mj_inverse(env.unwrapped.model, env.unwrapped.data)
+# NOTE: make sure the required forces are achievable by your actuators before
+#       continuing with the LQR controller process
+print(env.unwrapped.data.qfrc_inverse)
+
+# Save the position and control setpoints to linearize around
+qpos0 = env.unwrapped.data.qpos.copy()
+qfrc0 = env.unwrapped.data.qfrc_inverse.copy()
+
+# Finding actuator values that can create the desired forces
+# for motor actuators (which we use) we can mulitple the control setpoints by
+# the pseudo-inverse of the actuation moment arm
+# NOTE: more elaborate actuators would require finite-differencing to recover
+#       d qfrc_actuator / d u
+ctrl0 = np.atleast_2d(qfrc0) @ np.linalg.pinv(env.unwrapped.data.actuator_moment)
+ctrl0 = ctrl0.flatten() # save the ctrl setpoint
+
+
+# Choosing R
+nu = env.unwrapped.model.nu # Alias for the number of actuators
+R = np.eye(nu)
+
+# Choosing Q
+nv = env.unwrapped.model.nv # Alias for number of DoFs
+
+
+# reset sys model
+mujoco.mj_resetData(env.unwrapped.model, env.unwrapped.data)
+#env.unwrapped.data.qpos = qpos0
+#env.unwrapped.data.ctrl = ctrl0
+
+for i in range(500):
+    #env.step(action=ctrl0)
 
 exit() # just to stop more computation
 
