@@ -114,7 +114,7 @@ We use inverse dynamics to find the best control u to linearize around to find
 the control transition matrix B = df/du
 '''
 # set sys model to init_state
-mujoco.mj_resetDataKeyframe(env.unwrapped.model, env.unwrapped.data, 1)
+mujoco.mj_resetDataKeyframe(env.unwrapped.model, env.unwrapped.data, 0)
 # we use mj_forward (forward dynamics function) to find the acceleration given
 # the state and all the forces in the system
 mujoco.mj_forward(env.unwrapped.model, env.unwrapped.data)
@@ -138,62 +138,61 @@ qfrc0 = env.unwrapped.data.qfrc_inverse.copy()
 #       d qfrc_actuator / d u
 ctrl0 = np.atleast_2d(qfrc0) @ np.linalg.pinv(env.unwrapped.data.actuator_moment)
 ctrl0 = ctrl0.flatten() # save the ctrl setpoint
+print(ctrl0)
 
 
 # Choosing R
 nu = env.unwrapped.model.nu # Alias for the number of actuators
-R = np.eye(nu)
+# NOTE: Why do they use the number of actuators as the dimensions for R
+#       and number of DoFs as the dimensions for Q????
+R_ = np.eye(nu)
 
 # Choosing Q
 nv = env.unwrapped.model.nv # Alias for number of DoFs
+# NOTE: this wasn't used
 # To determine Q we'll be constructing it as a sum of two terms
 #   term 1: a balancing cost that will keep the CoM over the cart
 #           described by kinematic Jacobians which map b/w joint
 #           space and global Cartesian positions (computed analytically)
 #   term 2: a cost for joints moving away from their initial config
 
-# Calculating term 1
+Q = np.array([[10,  0,   0,  0 ],
+              [ 0,  1,   0,  0 ],
+              [ 0,  0,  10,  0 ],
+              [ 0,  0,   0,  1 ]])
+
+# Computing gain matrix K
+# Set the initial state and control.
 mujoco.mj_resetData(env.unwrapped.model, env.unwrapped.data)
-env.unwrapped.data.qpos = qpos0
-mujoco.mj_forward(env.unwrapped.model, env.unwrapped.data)
+env.unwrapped.data.ctrl = ctrl0 # should be 0
+env.unwrapped.data.qpos = qpos0 # should be 0
 
-jac_pole = np.zeros((3, nv)) # make Jacobian for pole
-mujoco.mj_jacSubtreeCom(env.unwrapped.model, env.unwrapped.data,
-                        jac_pole, env.unwrapped.model.body('pole_1').id)
+#
+# Before we solve for the LQR controller, we need the A and B matrices. 
+# These are computed by MuJoCo's mjd_transitionFD function which computes 
+# them using efficient finite-difference derivatives, exploiting the 
+# configurable computation pipeline to avoid recomputing quantities which
+# haven't changed.
+# 
+A = np.zeros((2*nv, 2*nv))
+B = np.zeros((2*nv, nu))
+epsilon = 1e-6
+flg_centered = True
+mujoco.mjd_transitionFD(env.unwrapped.model, env.unwrapped.data,
+                        epsilon, flg_centered, A, B, None, None)
 
-jac_cart = np.zeros((3, nv)) # make Jacobian for cart
-mujoco.mj_jacBodyCom(env.unwrapped.model, env.unwrapped.data,
-                     jac_cart, None, env.unwrapped.model.body('cart').id)
+# Solve discrete Riccati equation.
+P = linalg.solve_discrete_are(A, B, Q, R)
 
-jac_diff = jac_pole - jac_cart
-Q_balance_cost = jac_diff.T @ jac_diff # remember, its a quadratic cost
-print(Q_balance_cost)
+# Compute the feedback gain matrix K.
+K = np.linalg.inv(R + B.T @ P @ B) @ B.T @ P @ A
 
-# Calculating term 2
-# indices of relevant sets of joints 
-# (here we have pole hinge_1: id 1 & cart slider: id 2)
-joint_names = [env.unwrapped.model.joint(i).name
-               for i in range(env.unwrapped.model.njnt)]
-joint_addrs = [env.unwrapped.model.joint(name).dofadr[0]
-                for name in joint_names]
-#print('joint names: ', joint_names)
-#print('joint addrs: ', joint_addrs)
+print(K)
 
-Q_joints_mv_cost = np.eye(nv)
-Q_joints_mv_cost = Q = np.array([[ 0,  0,  0,  0  ],
-                                 [ 0,  1,  0,  0  ],
-                                 [ 0,  0,  0,  0  ],
-                                 [ 0,  0,  0,  1  ]]) 
+def apply_ctrlr(K, x):
+    u = -np.dot(K, x)
+    return u
 
-# Q term
-BALANCE_COST = 100
-Q = BALANCE_COST * Q_balance_cost + Q_joints_mv_cost
-
-# reset sys model
-mujoco.mj_resetData(env.unwrapped.model, env.unwrapped.data)
-
-
-exit() # just to stop more computation
 
 '''
 Simulation
@@ -201,6 +200,9 @@ Simulation
 NOTE: step != timestep, please refer to the .xml file for the simulation timestep
       as that would effect the energy in the system.
 '''
+# reset sys model
+env.reset()
+
 #while not done: # while loop for training
 for i in range(500): # for testing, 500 steps
 
@@ -218,6 +220,11 @@ for i in range(500): # for testing, 500 steps
     x_positions.append(state[0])
     theta_positions.append(state[2])
     us.append(u)
+
+    if i == 250:
+        # set environment to custom init_state (disturbed state)
+        # TODO: figure out how to make this into a external pertebuation
+        mujoco.mj_resetDataKeyframe(env.unwrapped.model, env.unwrapped.data, 1)
 
     # End the episode when either truncated or terminated is true
     #  - truncated: The episode duration reaches max number of timesteps
