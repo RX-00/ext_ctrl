@@ -181,6 +181,8 @@ flg_centered = True
 mujoco.mjd_transitionFD(env.unwrapped.model, env.unwrapped.data,
                         epsilon, flg_centered, A, B, None, None)
 
+print(A)
+
 # Solve discrete Riccati equation.
 P = linalg.solve_discrete_are(A, B, Q, R)
 
@@ -254,5 +256,8 @@ axs[2].plot(us)
 axs[2].set_title('Force applied on cart')
 axs[2].set_xlabel('Time step')
 axs[2].set_ylabel('Newtons')
+
+print("A matrix: \n", A)
+print("B matrix: \n", B)
 
 plt.show()
