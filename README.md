@@ -12,3 +12,6 @@ The root directory is split up into different system environments being that of 
 
 ## Custom Envs
 The custom Gymnasium environments used can be found and installed from here: [https://github.com/RX-00/ext_ctrl_envs]
+
+## Running
+NOTE: You might need to re-pip install the custom mujoco environments to make the non-nominal cartpole case to work. Currently not sure why this is the case.
