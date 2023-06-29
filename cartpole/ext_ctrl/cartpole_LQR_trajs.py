@@ -40,21 +40,34 @@ Collecting & Saving Trajectories Class
 '''
 class TrajCollector():
 
-    def __init__(self, env_id):
+    def __init__(self, env_id, render_mode):
         # object member variables
-        self.env_id = env_id
-        self.env = gym.make(env_id, render_mode="human")
+        self.env = gym.make(env_id, render_mode)
+        
+        # state observation of the system
+        self.state = self.env.reset()[0]
+        self.env.render()
 
+        # numpy arrays of state variable evolution over time
+        self.x_positions = np.array(self.state[0])
+        self.x_positions.append(self.state[1])
+        print(self.x_positions)
+
+    
+    # run simulation without collecting reference trajectories
     def run_sim(self):
         self.env.reset()
         for i in range(500):
             print(i)
 
-    def collect_traj(self):
+
+    # run sim whilst collecting reference trajectories
+    def run_sim_collect_traj(self):
         print("TODO")
 
 
 
 if __name__ == "__main__":
     env_id = "NominalCartpole"
-    nomCartpoleLQRTrajs = TrajCollector(env_id)
+    render_mode = "rgb_array"
+    nomCartpoleLQRTrajs = TrajCollector(env_id, render_mode)
