@@ -3,6 +3,7 @@
 Program of an LQR controller applied to a mujoco simulation of an
 nominal inverted pendulum on a cart system.
 
+
 '''
 
 # PyTorch
@@ -84,7 +85,7 @@ R = np.eye(1, dtype=int) * 10     # choose R (weight for input), we want input t
 Q = np.array([[10,  0,  0,  0  ],
               [ 0,  1,  0,  0  ],
               [ 0,  0, 10,  0  ],
-              [ 0,  0,  0,  1  ]])     # choose Q (weight for state)
+              [ 0,  0,  0,  1  ]])     # choose Q (weighted for cart pos and pendulum angle)
 
 # Solves the continuous-time algebraic Riccati equation (CARE).
 P = linalg.solve_continuous_are(A, B, Q, R)
