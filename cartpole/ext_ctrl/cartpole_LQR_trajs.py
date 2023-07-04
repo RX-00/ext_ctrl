@@ -155,39 +155,46 @@ class TrajCollector():
     '''
     def run_sim_collect_traj(self):
         '''
-        TODO:
-            work on how to vary the different initial states
+        Varying the initial state of the system
         '''
-        for i in range(1):
-            self.env.reset()
-            '''
-            vary the initial state of the cartpole
+        for cart_pos_offset in range(100):
+            for pend_pos_offset in range(100):
+                self.env.reset()
+                '''
+                vary the initial state of the cartpole
 
-            cart qpos & qvel
-            pole_1 qpos & qvel
-            '''
-            self.env.unwrapped.data.qpos
-            self.env.unwrapped.data.qvel
+                qpos array
+                [cart_pos, pend_pos]
 
+                qvel array
+                [cart_vel, pend_vel]
+                '''
+                sys_qpos = self.env.unwrapped.data.qpos
+                sys_qvel = self.env.unwrapped.data.qvel
+                sys_qpos[0] = sys_qpos[0] + cart_pos_offset / 100.0
+                sys_qpos[1] = sys_qpos[1] + pend_pos_offset / 100.0
 
-            for j in range(self.ep_len):
-                u = self.apply_LQR_ctrlr(self.state)
+                self.env.set_state(sys_qpos, sys_qvel)
 
-                self.state, reward, terminated, truncated, info = self.env.step(action=u)
+                for time_step in range(self.ep_len):
+                    u = self.apply_LQR_ctrlr(self.state)
 
-                # record state vector
-                self.xs         = np.append(self.xs,         self.state[0])
-                self.x_dots     = np.append(self.x_dots,     self.state[1])
-                self.thetas     = np.append(self.thetas,     self.state[2])
-                self.theta_dots = np.append(self.theta_dots, self.state[3])
+                    self.state, reward, terminated, truncated, info = self.env.step(action=u)
 
-            # saving state vars
-            file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/"
-            file_path = file_path + 'traj' + i + '.npz'
-            np.savez(file_path, xs=self.xs,
-                                x_dots=self.x_dots,
-                                thetas=self.thetas,
-                                theta_dots=self.theta_dots)
+                    # record state vector
+                    self.xs         = np.append(self.xs,         self.state[0])
+                    self.x_dots     = np.append(self.x_dots,     self.state[1])
+                    self.thetas     = np.append(self.thetas,     self.state[2])
+                    self.theta_dots = np.append(self.theta_dots, self.state[3])
+
+                # saving state vars
+                file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/"
+                file_path = (file_path + 'traj' + str(cart_pos_offset) + '_' + 
+                                                  str(pend_pos_offset) + '.npz')
+                np.savez(file_path, xs=self.xs,
+                                    x_dots=self.x_dots,
+                                    thetas=self.thetas,
+                                    theta_dots=self.theta_dots)
 
 
     '''
@@ -226,22 +233,24 @@ if __name__ == "__main__":
 
     '''
     NOTE:
-    use depth_array for offscreen
-    use human for onscreen render
+    use "depth_array" for offscreen
+    use "human" for onscreen render
     '''
-    r_mode = "depth_array"
+    r_mode = "human"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
-    nomCartpoleLQRTrajs.run_sim_collect_traj()
+    #nomCartpoleLQRTrajs.run_sim_collect_traj()
+    nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
     
+    '''
     file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/'
-    file_path = file_path + 'traj0.npz'
-    npzfile = np.load()
+    file_path = file_path + 'traj0_0.npz'
+    npzfile = np.load(file_path)
 
     xs         = npzfile['xs']
     x_dots     = npzfile['x_dots']
     thetas     = npzfile['thetas']
     theta_dots = npzfile['theta_dots']
-    
+    '''
 
     # don't forget to close the environment!
     nomCartpoleLQRTrajs.env.close()
