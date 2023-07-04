@@ -158,26 +158,36 @@ class TrajCollector():
         TODO:
             work on how to vary the different initial states
         '''
-        self.env.reset()
-        u = 0
+        for i in range(1):
+            self.env.reset()
+            '''
+            vary the initial state of the cartpole
 
-        for i in range(self.ep_len):
-            u = self.apply_LQR_ctrlr(self.state)
+            cart qpos & qvel
+            pole_1 qpos & qvel
+            '''
+            self.env.unwrapped.data.qpos
+            self.env.unwrapped.data.qvel
 
-            self.state, reward, terminated, truncated, info = self.env.step(action=u)
 
-            # record state vector
-            self.xs         = np.append(self.xs,         self.state[0])
-            self.x_dots     = np.append(self.x_dots,     self.state[1])
-            self.thetas     = np.append(self.thetas,     self.state[2])
-            self.theta_dots = np.append(self.theta_dots, self.state[3])
+            for j in range(self.ep_len):
+                u = self.apply_LQR_ctrlr(self.state)
 
-        # saving state vars
-        file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs.npz"
-        np.savez(file_path, xs=self.xs,
-                            x_dots=self.x_dots,
-                            thetas=self.thetas,
-                            theta_dots=self.theta_dots)
+                self.state, reward, terminated, truncated, info = self.env.step(action=u)
+
+                # record state vector
+                self.xs         = np.append(self.xs,         self.state[0])
+                self.x_dots     = np.append(self.x_dots,     self.state[1])
+                self.thetas     = np.append(self.thetas,     self.state[2])
+                self.theta_dots = np.append(self.theta_dots, self.state[3])
+
+            # saving state vars
+            file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/"
+            file_path = file_path + 'traj' + i + '.npz'
+            np.savez(file_path, xs=self.xs,
+                                x_dots=self.x_dots,
+                                thetas=self.thetas,
+                                theta_dots=self.theta_dots)
 
 
     '''
@@ -223,38 +233,14 @@ if __name__ == "__main__":
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
     nomCartpoleLQRTrajs.run_sim_collect_traj()
     
-    npzfile = np.load('/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs.npz')
+    file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/'
+    file_path = file_path + 'traj0.npz'
+    npzfile = np.load()
 
     xs         = npzfile['xs']
     x_dots     = npzfile['x_dots']
     thetas     = npzfile['thetas']
     theta_dots = npzfile['theta_dots']
-
-
-    fig, axs = plt.subplots(4, 1, constrained_layout=True)
-    fig.suptitle('Cartpole state vector', fontsize=16)
-
-    axs[0].plot(xs)
-    axs[0].set_title('Cart position')
-    axs[0].set_xlabel('Time step')
-    axs[0].set_ylabel('m')
-
-    axs[1].plot(x_dots)
-    axs[1].set_title('Cart velocity')
-    axs[1].set_xlabel('Time step')
-    axs[1].set_ylabel('m/s')
-
-    axs[2].plot(thetas)
-    axs[2].set_title('Pendulum angular position')
-    axs[2].set_xlabel('Time step')
-    axs[2].set_ylabel('Radians')
-
-    axs[3].plot(theta_dots)
-    axs[3].set_title('Pendulum angular velocity')
-    axs[3].set_xlabel('Time step')
-    axs[3].set_ylabel('Radians/sec')
-
-    plt.show()
     
 
     # don't forget to close the environment!
