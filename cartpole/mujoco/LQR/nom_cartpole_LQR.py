@@ -146,6 +146,9 @@ print(ctrl0)
 nu = env.unwrapped.model.nu # Alias for the number of actuators
 # NOTE: Why do they use the number of actuators as the dimensions for R
 #       and number of DoFs as the dimensions for Q????
+#       -> Because the dimension of R represents the control cost
+#          and Q represents the state of the system that we can observe, 
+#          hence the system (state) cost
 R_ = np.eye(nu)
 
 # Choosing Q
