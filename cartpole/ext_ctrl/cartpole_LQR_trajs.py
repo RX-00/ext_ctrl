@@ -172,13 +172,20 @@ class TrajCollector():
             self.thetas     = np.append(self.thetas,     self.state[2])
             self.theta_dots = np.append(self.theta_dots, self.state[3])
 
+        # saving state vars
+        file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs.npz"
+        np.savez(file_path, xs=self.xs,
+                            x_dots=self.x_dots,
+                            thetas=self.thetas,
+                            theta_dots=self.theta_dots)
+
 
     '''
     Plot data of the state vector evolution over time
     '''
     def plot_state_vector(self):
         fig, axs = plt.subplots(4, 1, constrained_layout=True)
-        fig.suptitle('Cartpole x and theta pos', fontsize=16)
+        fig.suptitle('Cartpole state vector', fontsize=16)
 
         axs[0].plot(self.xs)
         axs[0].set_title('Cart position')
@@ -207,12 +214,48 @@ class TrajCollector():
 if __name__ == "__main__":
     env_id = "NominalCartpole"
 
-    # use depth_array for offscreen
-    # use human for onscreen render
+    '''
+    NOTE:
+    use depth_array for offscreen
+    use human for onscreen render
+    '''
     r_mode = "depth_array"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
-    nomCartpoleLQRTrajs.run_sim(useCtrlr = True)
-    nomCartpoleLQRTrajs.plot_state_vector()
+    nomCartpoleLQRTrajs.run_sim_collect_traj()
+    
+    npzfile = np.load('/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs.npz')
+
+    xs         = npzfile['xs']
+    x_dots     = npzfile['x_dots']
+    thetas     = npzfile['thetas']
+    theta_dots = npzfile['theta_dots']
+
+
+    fig, axs = plt.subplots(4, 1, constrained_layout=True)
+    fig.suptitle('Cartpole state vector', fontsize=16)
+
+    axs[0].plot(xs)
+    axs[0].set_title('Cart position')
+    axs[0].set_xlabel('Time step')
+    axs[0].set_ylabel('m')
+
+    axs[1].plot(x_dots)
+    axs[1].set_title('Cart velocity')
+    axs[1].set_xlabel('Time step')
+    axs[1].set_ylabel('m/s')
+
+    axs[2].plot(thetas)
+    axs[2].set_title('Pendulum angular position')
+    axs[2].set_xlabel('Time step')
+    axs[2].set_ylabel('Radians')
+
+    axs[3].plot(theta_dots)
+    axs[3].set_title('Pendulum angular velocity')
+    axs[3].set_xlabel('Time step')
+    axs[3].set_ylabel('Radians/sec')
+
+    plt.show()
+    
 
     # don't forget to close the environment!
     nomCartpoleLQRTrajs.env.close()
