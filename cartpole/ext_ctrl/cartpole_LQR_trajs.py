@@ -136,6 +136,9 @@ class TrajCollector():
         self.env.reset()
         u = 0
 
+        # NOTE: init pos of the pendulum cannot be larger magnitude than 0.45
+        mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, self.env.unwrapped.data, 2)
+
         for i in range(self.ep_len):
 
             if useCtrlr == True:
@@ -157,8 +160,13 @@ class TrajCollector():
         '''
         Varying the initial state of the system
         '''
-        for cart_pos_offset in range(100):
-            for pend_pos_offset in range(100):
+        print("Collecting trajectories...")
+
+        # NOTE: one interval bigger (end val) than needed for purpose of including the prev val
+        cart_positions = np.arange(-1.8, 1.81, 0.01)  # NOTE: max and min of the railings of the cartpole
+        pend_positions = np.arange(-1.5, -1.51, 0.01) # NOTE: ~half circle range of pend (top)
+        for cart_pos_offset in cart_positions:
+            for pend_pos_offset in pend_positions:
                 self.env.reset()
                 '''
                 vary the initial state of the cartpole
@@ -171,8 +179,8 @@ class TrajCollector():
                 '''
                 sys_qpos = self.env.unwrapped.data.qpos
                 sys_qvel = self.env.unwrapped.data.qvel
-                sys_qpos[0] = sys_qpos[0] + cart_pos_offset / 100.0
-                sys_qpos[1] = sys_qpos[1] + pend_pos_offset / 100.0
+                sys_qpos[0] = cart_pos_offset
+                sys_qpos[1] = pend_pos_offset
 
                 self.env.set_state(sys_qpos, sys_qvel)
 
@@ -195,6 +203,7 @@ class TrajCollector():
                                     x_dots=self.x_dots,
                                     thetas=self.thetas,
                                     theta_dots=self.theta_dots)
+        print("Finished trajectory collection!")
 
 
     '''
@@ -236,10 +245,11 @@ if __name__ == "__main__":
     use "depth_array" for offscreen
     use "human" for onscreen render
     '''
-    r_mode = "human"
+    r_mode = "depth_array"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
     #nomCartpoleLQRTrajs.run_sim_collect_traj()
     nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
+    nomCartpoleLQRTrajs.plot_state_vector()
     
     '''
     file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/'
