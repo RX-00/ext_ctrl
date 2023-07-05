@@ -23,6 +23,8 @@ import mujoco
 import mediapy as media
 import matplotlib.pyplot as plt
 
+import os
+
 # Mujoco and custom environments
 import gymnasium as gym
 import ext_ctrl_envs
@@ -198,7 +200,7 @@ class TrajCollector():
                     self.theta_dots = np.append(self.theta_dots, self.state[3])
 
                 # saving state vars
-                file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/"
+                file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/"
                 file_path = (file_path + 'traj' + str(i) + '_' + 
                                                   str(j) + '.npz')
                 np.savez(file_path, xs=self.xs,
@@ -251,6 +253,7 @@ if __name__ == "__main__":
     use "depth_array" for offscreen
     use "human" for onscreen render
     '''
+
     r_mode = "depth_array"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
     nomCartpoleLQRTrajs.run_sim_collect_traj()
@@ -258,7 +261,7 @@ if __name__ == "__main__":
     #nomCartpoleLQRTrajs.plot_state_vector()
     
     '''
-    file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/'
+    file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
     file_path = file_path + 'traj0_0.npz'
     npzfile = np.load(file_path)
 
