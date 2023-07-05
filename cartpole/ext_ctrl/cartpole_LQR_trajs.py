@@ -163,8 +163,10 @@ class TrajCollector():
         print("Collecting trajectories...")
 
         # NOTE: one interval bigger (end val) than needed for purpose of including the prev val
-        cart_positions = np.arange(-1.8, 1.81, 0.01)  # NOTE: max and min of the railings of the cartpole
-        pend_positions = np.arange(-1.5, -1.51, 0.01) # NOTE: ~half circle range of pend (top)
+        cart_positions = np.arange(-1.8, 1.9, 0.1)  # NOTE: max and min of the railings of the cartpole
+        pend_positions = np.arange(-1.5, 1.6, 0.1) # NOTE: ~half circle range of pend (top)
+        i = 0
+        j = 0
         for cart_pos_offset in cart_positions:
             for pend_pos_offset in pend_positions:
                 self.env.reset()
@@ -197,13 +199,17 @@ class TrajCollector():
 
                 # saving state vars
                 file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/"
-                file_path = (file_path + 'traj' + str(cart_pos_offset) + '_' + 
-                                                  str(pend_pos_offset) + '.npz')
+                file_path = (file_path + 'traj' + str(i) + '_' + 
+                                                  str(j) + '.npz')
                 np.savez(file_path, xs=self.xs,
                                     x_dots=self.x_dots,
                                     thetas=self.thetas,
                                     theta_dots=self.theta_dots)
+                j = j + 1
+            i = i + 1
         print("Finished trajectory collection!")
+        print("Number of cart positions recorded: ", i)
+        print("Number of pend positions recorded: ", j)
 
 
     '''
@@ -247,9 +253,9 @@ if __name__ == "__main__":
     '''
     r_mode = "depth_array"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
-    #nomCartpoleLQRTrajs.run_sim_collect_traj()
-    nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
-    nomCartpoleLQRTrajs.plot_state_vector()
+    nomCartpoleLQRTrajs.run_sim_collect_traj()
+    #nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
+    #nomCartpoleLQRTrajs.plot_state_vector()
     
     '''
     file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/trajs/'
@@ -264,3 +270,5 @@ if __name__ == "__main__":
 
     # don't forget to close the environment!
     nomCartpoleLQRTrajs.env.close()
+
+
