@@ -139,7 +139,7 @@ class TrajCollector():
         u = 0
 
         # NOTE: init pos of the pendulum cannot be larger magnitude than 0.45
-        mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, self.env.unwrapped.data, 2)
+        # mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, self.env.unwrapped.data, 2)
 
         for i in range(self.ep_len):
 
@@ -254,10 +254,10 @@ if __name__ == "__main__":
     use "human" for onscreen render
     '''
 
-    r_mode = "depth_array"
+    r_mode = "human"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
-    nomCartpoleLQRTrajs.run_sim_collect_traj()
-    #nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
+    #nomCartpoleLQRTrajs.run_sim_collect_traj()
+    nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
     #nomCartpoleLQRTrajs.plot_state_vector()
     
     '''
