@@ -35,7 +35,7 @@ Make the policy learn!
 =======================
 '''
 def train():
-    print("Beginning training...")
+    print("\n\n\nBeginning training...")
     '''
     ----------------------------
     Environment Hyperparameters
@@ -44,7 +44,7 @@ def train():
     env_id = "NominalCartpole"
     render_mode = "depth_array"           # NOTE: depth_array for no render, human for yes render
     ep_len_max = 500                      # max timesteps in one episode
-    train_timesteps_max = int(3e6)        # training truncated if timesteps > train_timesteps_max
+    train_timesteps_max = int(3e8)        # training truncated if timesteps > train_timesteps_max
 
     freq_save_model = int(1e5)            # frequency to save model, units: [num timesteps]
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
@@ -94,7 +94,7 @@ def train():
     # Create new log file for each run
     log_file_name = log_dir + '/ppo_' + env_id + '_log_' + str(run_num) + '.csv'
     print("Current logging run number for: " + env_id + ' : ', run_num)
-    print("    logged file at: " + log_file_name)
+    print("----logged file at: " + log_file_name)
 
     '''
     ------------------------------
@@ -182,10 +182,10 @@ def train():
 
                     # apply action and critic with 
                     state, reward, done, _ = env.step_traj_track(action,
-                                                                 xs[ts],
-                                                                 x_dots[ts],
-                                                                 thetas[ts],
-                                                                 theta_dots[ts])
+                                                                 xs[ts-1],
+                                                                 x_dots[ts-1],
+                                                                 thetas[ts-1],
+                                                                 theta_dots[ts-1])
 
                     # save rewards and is_terminals
                     ppoAgent.buffer.rewards.append(reward)

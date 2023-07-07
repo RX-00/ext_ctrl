@@ -163,6 +163,9 @@ class PPO:
 
         if (self.action_std_dev <= min_action_std_dev):
             self.action_std_dev = min_action_std_dev
+            print("----set actor output action std dev to min action std dev : ", self.action_std_dev)
+        else:
+            print("----set actor output action std dev to : ", self.action_std_dev)
         
         self.set_action_std_dev(self.action_std_dev)
 
