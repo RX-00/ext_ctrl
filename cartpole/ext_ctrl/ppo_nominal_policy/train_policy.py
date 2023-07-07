@@ -136,8 +136,12 @@ def train():
     time_step = 0
     iter_episode = 0
 
+    i = 0
+    j = 0
+
     # main training loop
-    while time_step <= train_timesteps_max:
+    # NOTE: hard coded training trajectory file stop
+    while time_step <= train_timesteps_max and j < 31:
         state = env.reset()[0]
         curr_ep_rwrd = 0
 
@@ -146,8 +150,7 @@ def train():
         pend_positions = np.arange(-1.5, 1.6, 0.1)
         traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
         # traj file numbering trackers
-        i = 0
-        j = 0
+       
         for cart_pos_offset in cart_positions:
             for pend_pos_offset in pend_positions:
                 traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'

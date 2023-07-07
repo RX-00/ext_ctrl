@@ -19,8 +19,6 @@ import mediapy as media
 import matplotlib.pyplot as plt
 
 import os
-import time
-from datetime import datetime
 
 # Mujoco and custom environments
 import gymnasium as gym
@@ -36,7 +34,7 @@ def test():
     ep_len_max = 500                      # max timesteps in one episode
     # NOTE: action_std_dev needs to be the SAME
     #       as the action distrbution which was used while saving
-    action_std_dev = SOMETHING            # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
+    action_std_dev = 0.1            # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
     
     num_test_eps = 10
 
@@ -48,7 +46,7 @@ def test():
 
     print("Gymnasium env: " + env_id)
 
-    env = gym.make(env_id, render_mode)
+    env = gym.make(env_id, render_mode=render_mode)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
 
@@ -57,7 +55,7 @@ def test():
     
     # loading up weights
     # NOTE: Choose the number of the pretrained model weights you want to test
-    run_num_pretrained = SOMETHING
+    run_num_pretrained = 0
 
     directory = "ppo_pretrained" + '/' + env_id + '/'
     checkpoint_path = directory + "PPO_{}_{}.pth".format(env_id, run_num_pretrained)
@@ -71,10 +69,11 @@ def test():
     for ep in range(1, num_test_eps + 1):
         ep_reward = 0
         state = env.reset()[0]
+        env.render()
 
         for ts in range(1, ep_len_max + 1):
             action = ppoAgent.sel_action(state)
-            state, reward, done, _ = env.step(action)
+            state, reward, done, _, _ = env.step(action)
             ep_reward += reward
 
             if done:
