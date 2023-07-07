@@ -100,7 +100,7 @@ class GaussActorCritic(nn.Module):
 
     def act(self, state):
         action_mean = self.actor(state)
-        cov_mat = torch.diag(self.action_var).unsequeeze(dim=0)
+        cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
         distr = MultivariateNormal(action_mean, cov_mat)
 
         action = distr.sample()
@@ -175,7 +175,7 @@ class PPO:
                 self.buffer.states.append(state)
                 self.buffer.actions.append(action)
                 self.buffer.logprobs.append(action_logprob)
-                self.buffer.state_values.append(state_val)
+                self.buffer.state_vals.append(state_val)
 
                 return action.detach().cpu().numpy().flatten()
         

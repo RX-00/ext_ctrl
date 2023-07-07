@@ -93,7 +93,7 @@ def train():
 
     # Create new log file for each run
     log_file_name = log_dir + '/ppo_' + env_id + '_log_' + str(run_num) + '.csv'
-    print("Current logging run number for: " + env_id + ' : ' + run_num)
+    print("Current logging run number for: " + env_id + ' : ', run_num)
     print("    logged file at: " + log_file_name)
 
     '''
@@ -141,29 +141,120 @@ def train():
         state = env.reset()[0]
         curr_ep_rwrd = 0
 
-        # recorded trajectories
-        xs         = np.array(state[0])
-        x_dots     = np.array(state[1])
-        thetas     = np.array(state[2])
-        theta_dots = np.array(state[3])
+        # select the trajectory to determine reward with
+        cart_positions = np.arange(-1.8, 1.9, 0.1)
+        pend_positions = np.arange(-1.5, 1.6, 0.1)
+        traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
+        # traj file numbering trackers
+        i = 0
+        j = 0
+        for cart_pos_offset in cart_positions:
+            for pend_pos_offset in pend_positions:
+                traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
+                traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
+                                                            str(j) + '.npz')
+                
+                # print("trajectory file path: ", traj_file_path)
+                
+                '''
+                initiate starting state of the next episode to be
+                the same as the trajectory we're critiquing with
 
-        for ts in range(1, ep_len_max + 1):
-            # select action from policy
-            action = ppoAgent.sel_action(state)
+                NOTE: currently there are no variations on the init velocities
+                      (angular and regular)
+                '''
+                npzfile = np.load(traj_file_path)
+                # recorded trajectories
+                xs         = npzfile['xs']
+                x_dots     = npzfile['x_dots']
+                thetas     = npzfile['thetas']
+                theta_dots = npzfile['theta_dots']
+                # get and set init state for episode
+                sys_qpos = env.unwrapped.data.qpos
+                sys_qvel = env.unwrapped.data.qvel
+                sys_qpos[0] = xs[0]
+                sys_qpos[1] = thetas[0]
+                env.set_state(sys_qpos, sys_qvel)
+                
+                for ts in range(1, ep_len_max + 1):
+                    # select action from policy
+                    action = ppoAgent.sel_action(state)
 
-            # select the trajectory to determine reward with
-            cart_positions = np.arange(-1.8, 1.9, 0.1)
-            pend_positions = np.arange(-1.5, 1.6, 0.1)
-            traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
-            for i in cart_positions:
-                for j in pend_positions:
-                    traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
-                                                                str(j) + '.npz')
+                    # apply action and critic with 
+                    state, reward, done, _ = env.step_traj_track(action,
+                                                                 xs[ts],
+                                                                 x_dots[ts],
+                                                                 thetas[ts],
+                                                                 theta_dots[ts])
 
-            state, reward, done, _ = env.step(action)
+                    # save rewards and is_terminals
+                    ppoAgent.buffer.rewards.append(reward)
+                    ppoAgent.buffer.is_terminals.append(done)
 
+                    # tick next time step and record reward to accumulated ep reward
+                    time_step += 1
+                    curr_ep_rwrd += reward
 
+                    # update PPO agent
+                    if time_step % update_timestep == 0:
+                        ppoAgent.update()
+                        # decay action std dev of output action distribution
+                        ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
 
+                    # write log to logging file
+                    if time_step % freq_log_avg_rwrd == 0:
+                        # log avg reward til last episode
+                        log_avg_rwrd = log_running_rwrd / log_running_eps
+                        log_avg_rwrd = round(log_avg_rwrd, 4)
+
+                        log_file.write('{},{},{}\n'.format(iter_episode, time_step, log_avg_rwrd))
+                        log_file.flush()
+
+                        # reset log
+                        log_running_rwrd = 0
+                        log_running_eps = 0
+
+                    # print avg reward
+                    if time_step % freq_print_avg_rwrd == 0:
+                        # print average reward till last episode
+                        print_avg_rwrd = print_running_rwrd / print_running_eps
+                        print_avg_rwrd = round(print_avg_rwrd, 2)
+
+                        print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(iter_episode, time_step, print_avg_rwrd))
+
+                        print_running_rwrd = 0
+                        print_running_eps = 0
+
+                    # save model weights
+                    if time_step % freq_save_model == 0:
+                        print("Saving model at: ", checkpoint_path)
+                        ppoAgent.save(checkpoint_path)
+                        print("... model saved")
+                        print("Elapsed time: ", datetime.now().replace(microsecond=0) - start_time)
+
+                    # break if episode is terminated or truncated
+                    if done:
+                        break
+                
+                # cumulate the episode just finished
+                print_running_rwrd += curr_ep_rwrd
+                print_running_eps += 1
+                log_running_rwrd += curr_ep_rwrd
+                log_running_eps += 1
+                iter_episode += 1
+            
+            j += 1
+        i += 1
+
+    # Done training loop
+    log_file.close()
+    env.close()
+
+    # Print how long it all took
+    end_time = datetime.now().replace(microsecond=0)
+    print("Started training at (GMT) : ", start_time)
+    print("Finished training at (GMT) : ", end_time)
+    print("Total training time  : ", end_time - start_time)    
 
 
 
