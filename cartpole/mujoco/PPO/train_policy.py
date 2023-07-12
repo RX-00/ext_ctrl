@@ -81,7 +81,7 @@ def train():
     Logging progress on training
     -----------------------------
     '''
-    log_dir = "ext_ctrl_logs"
+    log_dir = "ppo_logs"
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     log_dir = log_dir + '/' + env_id + '/'
@@ -93,7 +93,7 @@ def train():
     run_num = len(curr_num_files)
 
     # Create new log file for each run
-    log_file_name = log_dir + '/ext_ctrl_' + env_id + '_log_' + str(run_num) + '.csv'
+    log_file_name = log_dir + '/ppo_' + env_id + '_log_' + str(run_num) + '.csv'
     print("Current logging run number for: " + env_id + ' : ', run_num)
     print("----logged file at: " + log_file_name)
 
@@ -103,14 +103,14 @@ def train():
     ------------------------------
     '''
     num_pretrained = 1 # NOTE: This determines file name for the weights
-    dir = "ext_ctrl_pretrained"
+    dir = "ppo_pretrained"
     if not os.path.exists(dir):
         os.makedirs(dir)
     dir = dir + '/' + env_id + '/'
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-    checkpoint_path = dir + "ext_ctrl_{}_{}.pth".format(env_id, num_pretrained)
+    checkpoint_path = dir + "PPO_{}_{}.pth".format(env_id, num_pretrained)
     print("Checkpoint for pretrained policies path: " + checkpoint_path)
 
     '''
