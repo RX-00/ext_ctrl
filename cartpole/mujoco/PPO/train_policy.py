@@ -1,8 +1,8 @@
 '''
 
-Training program for the policy to use reinforcement learning to learn the behavior
-of a state-space controller (e.g. LQR) on a cartpole in a nominal environment (i.e.
-the tilt of the track is zero, the pendulum doesn't have even mass distribution).
+Training program for the policy to use reinforcement learning to learn to control
+a cartpole in a nominal environment (i.e. the tilt of the track is zero, the 
+pendulum doesn't have even mass distribution).
 
 '''
 
@@ -45,9 +45,9 @@ def train():
     render_mode = "depth_array"           # NOTE: depth_array for no render, human for yes render
     render_mode_num = 2                   # NOTE: 2 for depth_array, 0 for human render
     ep_len_max = 500                      # max timesteps in one episode
-    train_timesteps_max = int(3e8)        # training truncated if timesteps > train_timesteps_max
+    train_timesteps_max = int(3e5)        # training truncated if timesteps > train_timesteps_max
 
-    freq_save_model = int(1e5)            # frequency to save model, units: [num timesteps]
+    freq_save_model = int(1e4)            # frequency to save model, units: [num timesteps]
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
     freq_log_avg_rwrd = ep_len_max * 2    # frequency to log avg reward return, units: [num timesteps]
 
@@ -141,115 +141,69 @@ def train():
     while time_step <= train_timesteps_max:
         state = env.reset()[0]
         curr_ep_rwrd = 0
+                       
+        for ts in range(1, ep_len_max + 1):
+            # select action from policy
+            action = ppoAgent.sel_action(state)             
 
-        # select the trajectory to determine reward with
-        cart_positions = np.arange(-1.8, 1.9, 0.1)
-        pend_positions = np.arange(-1.5, 1.6, 0.1)
-        traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
-        # traj file numbering trackers
-        i = 0
-        j = 0
-       
-        for cart_pos_offset in cart_positions:
-            for pend_pos_offset in pend_positions:
-                traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
-                traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
-                                                            str(j) + '.npz')
-                
-                # print("trajectory file path: ", traj_file_path)
-                
-                '''
-                initiate starting state of the next episode to be
-                the same as the trajectory we're critiquing with
+            state, reward, done, _, _ = env.step(action)
 
-                NOTE: currently there are no variations on the init velocities
-                      (angular and regular)
-                '''
-                npzfile = np.load(traj_file_path)
-                # recorded trajectories
-                xs         = npzfile['xs']
-                x_dots     = npzfile['x_dots']
-                thetas     = npzfile['thetas']
-                theta_dots = npzfile['theta_dots']
-                # get and set init state for episode
-                sys_qpos = env.unwrapped.data.qpos
-                sys_qvel = env.unwrapped.data.qvel
-                sys_qpos[0] = xs[0]
-                sys_qpos[1] = thetas[0]
-                env.set_state(sys_qpos, sys_qvel)
-                
-                for ts in range(1, ep_len_max + 1):
-                    # select action from policy
-                    action = ppoAgent.sel_action(state)
+            # save rewards and is_terminals
+            ppoAgent.buffer.rewards.append(reward)
+            ppoAgent.buffer.is_terminals.append(done)
 
-                    # apply action and trajectory to determine reward
-                    # state, reward, done, _, _ = env.step_traj_track(action,
-                    #                                                 xs[ts-1],
-                    #                                                 x_dots[ts-1],
-                    #                                                 thetas[ts-1],
-                    #                                                 theta_dots[ts-1])
-                    
+            # tick next time step and record reward to accumulated ep reward
+            time_step += 1
+            curr_ep_rwrd += reward
 
-                    state, reward, done, _, _ = env.step(action)
+            # update PPO agent
+            if time_step % update_timestep == 0:
+                ppoAgent.update()
+                # decay action std dev of output action distribution
+                ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
 
-                    # save rewards and is_terminals
-                    ppoAgent.buffer.rewards.append(reward)
-                    ppoAgent.buffer.is_terminals.append(done)
+            # write log to logging file
+            if time_step % freq_log_avg_rwrd == 0:
+                # log avg reward til last episode
+                log_avg_rwrd = log_running_rwrd / log_running_eps
+                log_avg_rwrd = round(log_avg_rwrd, 4)
 
-                    # tick next time step and record reward to accumulated ep reward
-                    time_step += 1
-                    curr_ep_rwrd += reward
+                log_file.write('{},{},{}\n'.format(iter_episode, time_step, log_avg_rwrd))
+                log_file.flush()
 
-                    # update PPO agent
-                    if time_step % update_timestep == 0:
-                        ppoAgent.update()
-                        # decay action std dev of output action distribution
-                        ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
+                # reset log
+                log_running_rwrd = 0
+                log_running_eps = 0
 
-                    # write log to logging file
-                    if time_step % freq_log_avg_rwrd == 0:
-                        # log avg reward til last episode
-                        log_avg_rwrd = log_running_rwrd / log_running_eps
-                        log_avg_rwrd = round(log_avg_rwrd, 4)
+            # print avg reward
+            if time_step % freq_print_avg_rwrd == 0:
+                # print average reward till last episode
+                print_avg_rwrd = print_running_rwrd / print_running_eps
+                print_avg_rwrd = round(print_avg_rwrd, 2)
 
-                        log_file.write('{},{},{}\n'.format(iter_episode, time_step, log_avg_rwrd))
-                        log_file.flush()
+                print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(iter_episode, time_step, print_avg_rwrd))
 
-                        # reset log
-                        log_running_rwrd = 0
-                        log_running_eps = 0
+                print_running_rwrd = 0
+                print_running_eps = 0
 
-                    # print avg reward
-                    if time_step % freq_print_avg_rwrd == 0:
-                        # print average reward till last episode
-                        print_avg_rwrd = print_running_rwrd / print_running_eps
-                        print_avg_rwrd = round(print_avg_rwrd, 2)
+            # save model weights
+            if time_step % freq_save_model == 0:
+                print("Saving model at: ", checkpoint_path)
+                ppoAgent.save(checkpoint_path)
+                print("... model saved")
+                print("Elapsed time: ", datetime.now().replace(microsecond=0) - start_time)
 
-                        print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(iter_episode, time_step, print_avg_rwrd))
-
-                        print_running_rwrd = 0
-                        print_running_eps = 0
-
-                    # save model weights
-                    if time_step % freq_save_model == 0:
-                        print("Saving model at: ", checkpoint_path)
-                        ppoAgent.save(checkpoint_path)
-                        print("... model saved")
-                        print("Elapsed time: ", datetime.now().replace(microsecond=0) - start_time)
-
-                    # break if episode is terminated or truncated
-                    if done:
-                        break
-                
-                # cumulate the episode just finished
-                print_running_rwrd += curr_ep_rwrd
-                print_running_eps += 1
-                log_running_rwrd += curr_ep_rwrd
-                log_running_eps += 1
-                iter_episode += 1
+            # break if episode is terminated or truncated
+            if done:
+                break
+        
+        # cumulate the episode just finished
+        print_running_rwrd += curr_ep_rwrd
+        print_running_eps += 1
+        log_running_rwrd += curr_ep_rwrd
+        log_running_eps += 1
+        iter_episode += 1
             
-                j += 1
-            i += 1
 
     # Done training loop
     log_file.close()
