@@ -47,14 +47,14 @@ class TrajCollector():
         self.env = gym.make(env_id, render_mode=r_mode)
         
         # state observation of the system
-        self.state = self.env.reset()[0] # np.array [x, x_d, theta, theta_d]
+        self.state = self.env.reset()[0] # np.array [x, theta, x_d, theta_d]
         # render the system
         self.env.render()
 
         # numpy arrays of state variable evolution over time
         self.xs         = np.array(self.state[0])
-        self.x_dots     = np.array(self.state[1])
-        self.thetas     = np.array(self.state[2])
+        self.x_dots     = np.array(self.state[2])
+        self.thetas     = np.array(self.state[1])
         self.theta_dots = np.array(self.state[3])
         self.us         = np.array(0)
 
@@ -151,8 +151,8 @@ class TrajCollector():
 
             # record state vector
             self.xs         = np.append(self.xs,         self.state[0])
-            self.x_dots     = np.append(self.x_dots,     self.state[1])
-            self.thetas     = np.append(self.thetas,     self.state[2])
+            self.x_dots     = np.append(self.x_dots,     self.state[2])
+            self.thetas     = np.append(self.thetas,     self.state[1])
             self.theta_dots = np.append(self.theta_dots, self.state[3])
             self.us         = np.append(self.us,         u)
 
@@ -171,6 +171,7 @@ class TrajCollector():
         pend_positions = np.arange(-0.5, 0.6, 0.05) # NOTE: ~half circle range of pend, -pi/2 to pi/2 where 0 is pend up
         i = 0
         j = 0
+
         for cart_pos_offset in cart_positions:
             for pend_pos_offset in pend_positions:
                 self.env.reset()
@@ -189,6 +190,14 @@ class TrajCollector():
                 sys_qpos[1] = pend_pos_offset
 
                 self.env.set_state(sys_qpos, sys_qvel)
+                self.state = self.env.get_obs()
+
+                # Clear the numpy trajectories!
+                self.xs         = np.array(self.state[0])
+                self.x_dots     = np.array(self.state[2])
+                self.thetas     = np.array(self.state[1])
+                self.theta_dots = np.array(self.state[3])
+                self.us         = np.array(0)
 
                 for time_step in range(self.ep_len):
                     u = self.apply_LQR_ctrlr(self.state)
@@ -197,10 +206,13 @@ class TrajCollector():
 
                     # record state vector
                     self.xs         = np.append(self.xs,         self.state[0])
-                    self.x_dots     = np.append(self.x_dots,     self.state[1])
-                    self.thetas     = np.append(self.thetas,     self.state[2])
+                    self.x_dots     = np.append(self.x_dots,     self.state[2])
+                    self.thetas     = np.append(self.thetas,     self.state[1])
                     self.theta_dots = np.append(self.theta_dots, self.state[3])
                     self.us         = np.append(self.us,         u)
+                    # NOTE: Yes, I know this is bad practice, but I want this to
+                    #       be more generalizable. There definitely is a better
+                    #       way to do this though.
 
                 # saving state vars
                 file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/"
@@ -214,8 +226,8 @@ class TrajCollector():
             i = i + 1
             j = 0
         print("Finished trajectory collection!")
-        print("Number of cart positions recorded: ", cart_positions.size())
-        print("Number of pend positions recorded: ", pend_positions.size())
+        print("Number of cart positions recorded: ", cart_positions.size)
+        print("Number of pend positions recorded: ", pend_positions.size)
 
 
     '''
@@ -263,7 +275,7 @@ if __name__ == "__main__":
     #nomCartpoleLQRTrajs.run_sim_collect_traj()
     #nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
     #nomCartpoleLQRTrajs.plot_state_vector()
-    
+
     
     file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
     file_path = file_path + 'traj73_0.npz'

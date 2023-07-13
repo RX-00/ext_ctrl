@@ -177,7 +177,7 @@ def std_simulation():
 
         # record data about system
         x_positions.append(state[0])
-        theta_positions.append(state[2])
+        theta_positions.append(state[1])
         us.append(u)
 
         # End the episode when either truncated or terminated is true

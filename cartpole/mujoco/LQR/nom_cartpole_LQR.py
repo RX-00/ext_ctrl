@@ -49,7 +49,7 @@ a_size = env.action_space.shape[0]
 
 # recording info of the system simulation
 x_positions = [state[0]]
-theta_positions = [state[2]]
+theta_positions = [state[1]]
 
 # for if the system is in a termination or truncation state
 done = False
@@ -224,7 +224,7 @@ for i in range(500): # for testing, 500 steps
 
     # record data about system
     x_positions.append(state[0])
-    theta_positions.append(state[2])
+    theta_positions.append(state[1])
     us.append(u)
 
     if i == 150:
