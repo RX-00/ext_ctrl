@@ -57,9 +57,9 @@ def train():
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
     freq_log_avg_rwrd = ep_len_max * 2    # frequency to log avg reward return, units: [num timesteps]
 
-    action_std_dev = 0.6                  # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
+    action_std_dev = 0.8                  # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
     action_std_dev_decay_rate = 0.01      # linearly decay action_std_dev
-    min_action_std_dev = 0.1              # can't decay std dev more than this val
+    min_action_std_dev = 0.01             # can't decay std dev more than this val
     
                                           # frequency to decay action std dev, units: [num timesteps]
     freq_decay_action_std_dev_decay = int (2.5e5)
@@ -166,13 +166,13 @@ def train():
         i = 0
         j = 0
 
-        print("\nTrained over all trajectories ", num_trained_over_trajs, " times\n")
+        print("\n\nTrained over all trajectories ", num_trained_over_trajs, " times\n")
 
         for cart_pos_offset in cart_positions:
             for pend_pos_offset in pend_positions:
                 env.reset()
                 curr_ep_rwrd = 0
-
+                
                 traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
                 traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
                                                             str(j) + '.npz')
