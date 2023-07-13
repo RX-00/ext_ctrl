@@ -235,7 +235,7 @@ for i in range(500): # for testing, 500 steps
         sys_qpos = env.unwrapped.data.qpos
         sys_qvel = env.unwrapped.data.qvel
         sys_qpos[0] = 1.8
-        sys_qpos[1] = 0.0 # -1.5
+        sys_qpos[1] = -0.5
 
         env.set_state(sys_qpos, sys_qvel)
 

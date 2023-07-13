@@ -221,7 +221,8 @@ class TrajCollector():
                 np.savez(file_path, xs=self.xs,
                                     x_dots=self.x_dots,
                                     thetas=self.thetas,
-                                    theta_dots=self.theta_dots)
+                                    theta_dots=self.theta_dots,
+                                    us=self.us)
                 j = j + 1
             i = i + 1
             j = 0
@@ -272,7 +273,7 @@ if __name__ == "__main__":
 
     r_mode = "depth_array"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
-    #nomCartpoleLQRTrajs.run_sim_collect_traj()
+    nomCartpoleLQRTrajs.run_sim_collect_traj()
     #nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
     #nomCartpoleLQRTrajs.plot_state_vector()
 
@@ -285,8 +286,9 @@ if __name__ == "__main__":
     x_dots     = npzfile['x_dots']
     thetas     = npzfile['thetas']
     theta_dots = npzfile['theta_dots']
+    us         = npzfile['us']
 
-    fig, axs = plt.subplots(4, 1, constrained_layout=True)
+    fig, axs = plt.subplots(5, 1, constrained_layout=True)
     fig.suptitle('Cartpole state vector', fontsize=16)
 
     axs[0].plot(xs)
@@ -308,6 +310,11 @@ if __name__ == "__main__":
     axs[3].set_title('Pendulum angular velocity')
     axs[3].set_xlabel('Time step')
     axs[3].set_ylabel('Radians/sec')
+
+    axs[4].plot(us)
+    axs[4].set_title('Control inputs u')
+    axs[4].set_xlabel('Time step')
+    axs[4].set_ylabel('Newtons')
 
     plt.show()
     

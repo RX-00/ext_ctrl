@@ -58,7 +58,7 @@ def test():
     run_num_pretrained = 0
 
     directory = "ext_ctrl_pretrained" + '/' + env_id + '/'
-    checkpoint_path = directory + "ext_ctrl_{}_{}.pth".format(env_id, run_num_pretrained)
+    checkpoint_path = "ext_ctrl_{}_{}.pth".format(env_id, run_num_pretrained)
     print("loading network from : " + checkpoint_path)
 
     ppoAgent.load(checkpoint_path)

@@ -196,7 +196,7 @@ def train():
             # break if episode is terminated or truncated
             if done:
                 break
-        
+                
         # cumulate the episode just finished
         print_running_rwrd += curr_ep_rwrd
         print_running_eps += 1

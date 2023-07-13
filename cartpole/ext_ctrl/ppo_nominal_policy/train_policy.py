@@ -28,6 +28,12 @@ import ext_ctrl_envs
 
 from ppo import PPO
 
+'''
+Helper function for the reward function
+'''
+def calc_width_curve_weight(weight_w, weight_c, trajs):
+    return (weight_w / (trajs.max() - trajs.min()))**weight_c
+
 
 '''
 =======================
@@ -47,12 +53,12 @@ def train():
     ep_len_max = 500                      # max timesteps in one episode
     train_timesteps_max = int(3e8)        # training truncated if timesteps > train_timesteps_max
 
-    freq_save_model = int(1e5)            # frequency to save model, units: [num timesteps]
+    freq_save_model = int(1e4)            # frequency to save model, units: [num timesteps]
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
     freq_log_avg_rwrd = ep_len_max * 2    # frequency to log avg reward return, units: [num timesteps]
 
     action_std_dev = 0.6                  # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
-    action_std_dev_decay_rate = 0.05      # linearly decay action_std_dev
+    action_std_dev_decay_rate = 0.01      # linearly decay action_std_dev
     min_action_std_dev = 0.1              # can't decay std dev more than this val
     
                                           # frequency to decay action std dev, units: [num timesteps]
@@ -75,6 +81,11 @@ def train():
     gamma = 0.99                        # discount factor
     lr_actor = 0.0003                   # learning rate for actor NN
     lr_critic = 0.001                   # learning rate for critic NN
+
+    # weights for reward function
+    weight_h = 1 # determines max reward val
+    weight_w = 2 # determines how close tracking needs to be to start rewarding -> higher = closer requirements
+    weight_c = 2 # determines how much reward to give when getting close to perfect tracking -> lower = need to be closer tracking to get full reward
 
     '''
     -----------------------------
@@ -136,6 +147,7 @@ def train():
     log_running_eps = 0
     time_step = 0
     iter_episode = 0
+    num_trained_over_trajs = 0
 
     # main training loop
     while time_step <= train_timesteps_max:
@@ -143,15 +155,24 @@ def train():
         curr_ep_rwrd = 0
 
         # select the trajectory to determine reward with
-        cart_positions = np.arange(-1.8, 1.9, 0.1)
-        pend_positions = np.arange(-1.5, 1.6, 0.1)
+        '''
+        NOTE: has to be the same as in the cartpole_LQR_trajs.py trajectory
+              collector program
+        '''
+        cart_positions = np.arange(-1.8, 1.9, 0.05)
+        pend_positions = np.arange(-0.5, 0.6, 0.05)
         traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
         # traj file numbering trackers
         i = 0
         j = 0
-       
+
+        print("\nTrained over all trajectories ", num_trained_over_trajs, " times\n")
+
         for cart_pos_offset in cart_positions:
             for pend_pos_offset in pend_positions:
+                env.reset()
+                curr_ep_rwrd = 0
+
                 traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
                 traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
                                                             str(j) + '.npz')
@@ -171,27 +192,42 @@ def train():
                 x_dots     = npzfile['x_dots']
                 thetas     = npzfile['thetas']
                 theta_dots = npzfile['theta_dots']
+                us         = npzfile['us']
+
+                # calculate intermediate weights for reward function
+                w_x = calc_width_curve_weight(weight_w, weight_c, xs)
+                w_x_dot = calc_width_curve_weight(weight_w, weight_c, x_dots)
+                w_theta = calc_width_curve_weight(weight_w, weight_c, thetas)
+                w_theta_dot = calc_width_curve_weight(weight_w, weight_c, theta_dots)
+                w_u = calc_width_curve_weight(weight_w, weight_c, us)
+
+                '''
+                NOTE: Make sure it lines up with how ob vector is put together:
+                        [x, theta, x_dot, theta_dot] + u
+                '''
+                interm_weights = [w_x, w_theta, w_x_dot, w_theta_dot, w_u]
+
                 # get and set init state for episode
                 sys_qpos = env.unwrapped.data.qpos
                 sys_qvel = env.unwrapped.data.qvel
                 sys_qpos[0] = xs[0]
                 sys_qpos[1] = thetas[0]
                 env.set_state(sys_qpos, sys_qvel)
-                
+
                 for ts in range(1, ep_len_max + 1):
                     # select action from policy
                     action = ppoAgent.sel_action(state)
 
                     # apply action and trajectory to determine reward
-                    # state, reward, done, _, _ = env.step_traj_track(action,
-                    #                                                 xs[ts-1],
-                    #                                                 x_dots[ts-1],
-                    #                                                 thetas[ts-1],
-                    #                                                 theta_dots[ts-1])
+                    state, reward, done, _, _ = env.step_traj_track(action,
+                                                                    xs[ts-1],
+                                                                    x_dots[ts-1],
+                                                                    thetas[ts-1],
+                                                                    theta_dots[ts-1],
+                                                                    us[ts-1],
+                                                                    weight_h,
+                                                                    interm_weights)
                     
-
-                    state, reward, done, _, _ = env.step(action)
-
                     # save rewards and is_terminals
                     ppoAgent.buffer.rewards.append(reward)
                     ppoAgent.buffer.is_terminals.append(done)
@@ -247,9 +283,12 @@ def train():
                 log_running_rwrd += curr_ep_rwrd
                 log_running_eps += 1
                 iter_episode += 1
-            
+                
                 j += 1
             i += 1
+            j = 0
+
+        num_trained_over_trajs += 1
 
     # Done training loop
     log_file.close()
