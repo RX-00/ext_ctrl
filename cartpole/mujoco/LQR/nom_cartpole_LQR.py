@@ -214,7 +214,7 @@ for i in range(500): # for testing, 500 steps
 
     u = apply_ctrlr(K, state)
 
-    print("u: ", u)
+    #print("u: ", u)
 
     # Step return type - `tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]`
     # These represent the next observation, the reward from the step,
@@ -227,10 +227,17 @@ for i in range(500): # for testing, 500 steps
     theta_positions.append(state[2])
     us.append(u)
 
-    if i == 250:
+    if i == 150:
         # set environment to custom init_state (disturbed state)
         # TODO: figure out how to make this into a external pertebuation
-        mujoco.mj_resetDataKeyframe(env.unwrapped.model, env.unwrapped.data, 1)
+        # mujoco.mj_resetDataKeyframe(env.unwrapped.model, env.unwrapped.data, 1)
+
+        sys_qpos = env.unwrapped.data.qpos
+        sys_qvel = env.unwrapped.data.qvel
+        sys_qpos[0] = 1.8
+        sys_qpos[1] = 0.0 # -1.5
+
+        env.set_state(sys_qpos, sys_qvel)
 
     # End the episode when either truncated or terminated is true
     #  - truncated: The episode duration reaches max number of timesteps

@@ -45,7 +45,7 @@ def train():
     render_mode = "depth_array"           # NOTE: depth_array for no render, human for yes render
     render_mode_num = 2                   # NOTE: 2 for depth_array, 0 for human render
     ep_len_max = 500                      # max timesteps in one episode
-    train_timesteps_max = int(3e5)        # training truncated if timesteps > train_timesteps_max
+    train_timesteps_max = int(3e6)        # training truncated if timesteps > train_timesteps_max
 
     freq_save_model = int(1e4)            # frequency to save model, units: [num timesteps]
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
@@ -102,7 +102,7 @@ def train():
     Checkpointing policy learning
     ------------------------------
     '''
-    num_pretrained = 1 # NOTE: This determines file name for the weights
+    num_pretrained = 0 # NOTE: This determines file name for the weights
     dir = "ppo_pretrained"
     if not os.path.exists(dir):
         os.makedirs(dir)

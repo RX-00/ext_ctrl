@@ -102,7 +102,7 @@ def train():
     Checkpointing policy learning
     ------------------------------
     '''
-    num_pretrained = 1 # NOTE: This determines file name for the weights
+    num_pretrained = 0 # NOTE: This determines file name for the weights
     dir = "ext_ctrl_pretrained"
     if not os.path.exists(dir):
         os.makedirs(dir)

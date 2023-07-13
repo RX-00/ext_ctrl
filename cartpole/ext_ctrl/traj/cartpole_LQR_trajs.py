@@ -56,6 +56,7 @@ class TrajCollector():
         self.x_dots     = np.array(self.state[1])
         self.thetas     = np.array(self.state[2])
         self.theta_dots = np.array(self.state[3])
+        self.us         = np.array(0)
 
         # flag for if episode is terminated or truncated
         self.done = False
@@ -153,6 +154,7 @@ class TrajCollector():
             self.x_dots     = np.append(self.x_dots,     self.state[1])
             self.thetas     = np.append(self.thetas,     self.state[2])
             self.theta_dots = np.append(self.theta_dots, self.state[3])
+            self.us         = np.append(self.us,         u)
 
 
     '''
@@ -165,8 +167,8 @@ class TrajCollector():
         print("Collecting trajectories...")
 
         # NOTE: one interval bigger (end val) than needed for purpose of including the prev val
-        cart_positions = np.arange(-1.8, 1.9, 0.1)  # NOTE: max and min of the railings of the cartpole
-        pend_positions = np.arange(-1.5, 1.6, 0.1) # NOTE: ~half circle range of pend (top)
+        cart_positions = np.arange(-1.8, 1.9, 0.05)  # NOTE: max and min of the railings of the cartpole
+        pend_positions = np.arange(-0.5, 0.6, 0.05) # NOTE: ~half circle range of pend, -pi/2 to pi/2 where 0 is pend up
         i = 0
         j = 0
         for cart_pos_offset in cart_positions:
@@ -198,6 +200,7 @@ class TrajCollector():
                     self.x_dots     = np.append(self.x_dots,     self.state[1])
                     self.thetas     = np.append(self.thetas,     self.state[2])
                     self.theta_dots = np.append(self.theta_dots, self.state[3])
+                    self.us         = np.append(self.us,         u)
 
                 # saving state vars
                 file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/"
@@ -209,9 +212,10 @@ class TrajCollector():
                                     theta_dots=self.theta_dots)
                 j = j + 1
             i = i + 1
+            j = 0
         print("Finished trajectory collection!")
-        print("Number of cart positions recorded: ", i)
-        print("Number of pend positions recorded: ", j)
+        print("Number of cart positions recorded: ", cart_positions.size())
+        print("Number of pend positions recorded: ", pend_positions.size())
 
 
     '''
@@ -254,22 +258,47 @@ if __name__ == "__main__":
     use "human" for onscreen render
     '''
 
-    r_mode = "human"
+    r_mode = "depth_array"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
     #nomCartpoleLQRTrajs.run_sim_collect_traj()
-    nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
+    #nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
     #nomCartpoleLQRTrajs.plot_state_vector()
     
-    '''
+    
     file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
-    file_path = file_path + 'traj0_0.npz'
+    file_path = file_path + 'traj73_0.npz'
     npzfile = np.load(file_path)
 
     xs         = npzfile['xs']
     x_dots     = npzfile['x_dots']
     thetas     = npzfile['thetas']
     theta_dots = npzfile['theta_dots']
-    '''
+
+    fig, axs = plt.subplots(4, 1, constrained_layout=True)
+    fig.suptitle('Cartpole state vector', fontsize=16)
+
+    axs[0].plot(xs)
+    axs[0].set_title('Cart position')
+    axs[0].set_xlabel('Time step')
+    axs[0].set_ylabel('m')
+
+    axs[1].plot(x_dots)
+    axs[1].set_title('Cart velocity')
+    axs[1].set_xlabel('Time step')
+    axs[1].set_ylabel('m/s')
+
+    axs[2].plot(thetas)
+    axs[2].set_title('Pendulum angular position')
+    axs[2].set_xlabel('Time step')
+    axs[2].set_ylabel('Radians')
+
+    axs[3].plot(theta_dots)
+    axs[3].set_title('Pendulum angular velocity')
+    axs[3].set_xlabel('Time step')
+    axs[3].set_ylabel('Radians/sec')
+
+    plt.show()
+    
 
     # don't forget to close the environment!
     nomCartpoleLQRTrajs.env.close()

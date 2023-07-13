@@ -57,7 +57,7 @@ def test():
     
     # loading up weights
     # NOTE: Choose the number of the pretrained model weights you want to test
-    run_num_pretrained = 1
+    run_num_pretrained = 0
 
     directory = "ppo_pretrained" + '/' + env_id + '/'
     checkpoint_path = directory + "PPO_{}_{}.pth".format(env_id, run_num_pretrained)
