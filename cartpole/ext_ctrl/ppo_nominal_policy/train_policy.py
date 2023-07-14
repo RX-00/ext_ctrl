@@ -87,9 +87,9 @@ def train():
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
     freq_log_avg_rwrd = ep_len_max * 2    # frequency to log avg reward return, units: [num timesteps]
 
-    action_std_dev = 0.8                  # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
-    action_std_dev_decay_rate = 0.01      # linearly decay action_std_dev
-    min_action_std_dev = 0.1             # can't decay std dev more than this val
+    action_std_dev = 1.1                  # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
+    action_std_dev_decay_rate = 0.001     # linearly decay action_std_dev
+    min_action_std_dev = 0.001            # can't decay std dev more than this val
     
                                           # frequency to decay action std dev, units: [num timesteps]
     freq_decay_action_std_dev_decay = int (2.5e5)
