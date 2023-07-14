@@ -18,6 +18,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 from torch.distributions import MultivariateNormal
+from torch.distributions import Normal
 
 import numpy as np
 import mujoco
@@ -67,6 +68,7 @@ class GaussActorCritic(nn.Module):
 
         self.state_dim = state_dim
         self.action_dim = action_dim
+        self.action_std_dev = action_std_dev_init
         self.action_var = torch.full((action_dim,), 
                                      action_std_dev_init * action_std_dev_init).to(device)
         # Actor network
@@ -75,7 +77,7 @@ class GaussActorCritic(nn.Module):
                                    nn.Tanh(),
                                    nn.Linear(256, 256),
                                    nn.Tanh(),
-                                   nn.Linear(256, action_dim),
+                                   nn.Linear(256, action_dim + 1), # for the std dev
                                    nn.Tanh()
                                    )
 
@@ -99,9 +101,10 @@ class GaussActorCritic(nn.Module):
 
 
     def act(self, state):
-        action_mean = self.actor(state)
+        action_mean, self.action_std_dev = self.actor(state)
+        self.set_action_std_dev(self.action_std_dev.item()) # convert 1-d tensor to int
         cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-        distr = MultivariateNormal(action_mean, cov_mat)
+        distr = Normal(action_mean, cov_mat)
 
         action = distr.sample()
         action_logprob = distr.log_prob(action)
@@ -112,6 +115,7 @@ class GaussActorCritic(nn.Module):
 
     def evaluate(self, state, action):
         action_mean = self.actor(state)
+        self.set_action_std_dev(self.action_std_dev)
         action_var = self.action_var.expand_as(action_mean)
         cov_mat = torch.diag_embed(action_var).to(device)
         distr = MultivariateNormal(action_mean, cov_mat)
@@ -172,15 +176,15 @@ class PPO:
     
     def sel_action(self, state):
         with torch.no_grad():
-                state = torch.FloatTensor(state).to(device)
-                action, action_logprob, state_val = self.policy_prev.act(state)
+            state = torch.FloatTensor(state).to(device)
+            action, action_logprob, state_val = self.policy_prev.act(state)
 
-                self.buffer.states.append(state)
-                self.buffer.actions.append(action)
-                self.buffer.logprobs.append(action_logprob)
-                self.buffer.state_vals.append(state_val)
+            self.buffer.states.append(state)
+            self.buffer.actions.append(action)
+            self.buffer.logprobs.append(action_logprob)
+            self.buffer.state_vals.append(state_val)
 
-                return action.detach().cpu().numpy().flatten()
+            return action.detach().cpu().numpy().flatten()
         
     
     def update(self):

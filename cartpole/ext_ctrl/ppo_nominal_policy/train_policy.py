@@ -241,8 +241,10 @@ def train():
             # update PPO agent
             if time_step % update_timestep == 0:
                 ppoAgent.update()
+                
+                # NOTE: Trying to let the NN updates its own action_std_dev
                 # decay action std dev of output action distribution
-                ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
+                # ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
 
             # write log to logging file
             if time_step % freq_log_avg_rwrd == 0:
