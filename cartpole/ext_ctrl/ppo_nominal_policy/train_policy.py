@@ -265,7 +265,7 @@ def train():
             if time_step % freq_save_model == 0:
                 print("Saving model at: ", checkpoint_path)
                 ppoAgent.save(checkpoint_path)
-                print("... model saved")
+                print("... model saved | action_logstd : ", ppoAgent.policy_prev.action_logstd)
                 print("Elapsed time: ", datetime.now().replace(microsecond=0) - start_time)
 
             # break if episode is terminated or truncated

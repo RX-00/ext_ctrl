@@ -96,7 +96,7 @@ class GaussActorCritic(nn.Module):
         if action_dim > 1:
             self.action_logstd = nn.Parameter(torch.zeros(1, np.prod(action_dim)))
         else:
-            self.action_logstd = nn.Parameter(torch.tensor(float(action_dim), dtype=torch.float64))
+            self.action_logstd = nn.Parameter(torch.zeros(np.prod(action_dim)))
 
     def forward(self):
         raise NotImplementedError # since we used a sequential model
@@ -108,11 +108,10 @@ class GaussActorCritic(nn.Module):
         to match the output size of the means
         '''
         action_mean = self.actor(state)
-        if self.action_logstd.size != action_mean.size:
-            action_logstd = self.action_logstd.expand_as(action_mean)
-        action_std = np.exp(action_logstd.detach().numpy()) 
+        action_logstd = self.action_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd) 
 
-        distr = Normal(action_mean, torch.from_numpy(action_std))
+        distr = Normal(action_mean, action_std)
 
         action = distr.sample()
         action_logprob = distr.log_prob(action)
@@ -124,11 +123,10 @@ class GaussActorCritic(nn.Module):
     # evaluate previous state and previous action
     def evaluate(self, state, action):
         action_mean = self.actor(state)
-        if self.action_logstd.size != action_mean.size:
-            action_logstd = self.action_logstd.expand_as(action_mean)
-        action_std = np.exp(action_logstd.detach().numpy())
+        action_logstd = self.action_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
         
-        distr = Normal(action_mean, torch.from_numpy(action_std))
+        distr = Normal(action_mean, action_std)
 
         # NOTE: if continuous action space is of dim 1, we gotta reshape action
         if self.action_dim == 1:
@@ -159,8 +157,10 @@ class PPO:
         self.policy_prev.load_state_dict(self.policy.state_dict())
 
         self.optimizer = torch.optim.Adam([{'params' : self.policy.actor.parameters(), 'lr' : lr_actor},
-                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_critic}
+                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_critic},
+                                           {'params' : self.policy.action_logstd} # this is probably wrong, if so change back to self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr_actor)
                                           ])
+        
         self.MseLoss = nn.MSELoss()
 
     
