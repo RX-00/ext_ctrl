@@ -18,6 +18,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 from torch.distributions import MultivariateNormal
+from torch.distributions import Normal
 
 import numpy as np
 import mujoco
@@ -62,46 +63,55 @@ Gaussian Actor & Critic Class
 '''
 # NOTE: 
 class GaussActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, action_std_dev_init):
+    def __init__(self, state_dim, action_dim):
         super(GaussActorCritic, self).__init__()
 
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.action_var = torch.full((action_dim,), 
-                                     action_std_dev_init * action_std_dev_init).to(device)
-        # Actor network
+        
+        # Actor network (output means)
         self.actor = nn.Sequential(
-                                   nn.Linear(state_dim, 64),
+                                   nn.Linear(state_dim, 256),
                                    nn.Tanh(),
-                                   nn.Linear(64, 64),
+                                   nn.Linear(256, 256),
                                    nn.Tanh(),
-                                   nn.Linear(64, action_dim),
+                                   nn.Linear(256, np.prod(action_dim)),
                                    nn.Tanh()
                                    )
 
         # Critic network
         self.critic = nn.Sequential(
-                                    nn.Linear(state_dim, 64),
+                                    nn.Linear(state_dim, 256),
                                     nn.Tanh(),
-                                    nn.Linear(64, 64),
+                                    nn.Linear(256, 256),
                                     nn.Tanh(),
-                                    nn.Linear(64, 1)
+                                    nn.Linear(256, 1)
                                    )
-
-
-    def set_action_std_dev(self, new_action_std_dev):
-        self.action_var = torch.full((self.action_dim,),
-                                     new_action_std_dev * new_action_std_dev).to(device)
-
+        
+        '''
+        Generate the log standard deviation, which are learnable NN params
+        that don't take any inputs.
+        Thus it's state independent
+        '''
+        if action_dim > 1:
+            self.action_logstd = nn.Parameter(torch.zeros(1, np.prod(action_dim)))
+        else:
+            self.action_logstd = nn.Parameter(torch.zeros(np.prod(action_dim)))
 
     def forward(self):
         raise NotImplementedError # since we used a sequential model
 
 
     def act(self, state):
+        '''
+        During forward pass, we get the means then get the log std
+        to match the output size of the means
+        '''
         action_mean = self.actor(state)
-        cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-        distr = MultivariateNormal(action_mean, cov_mat)
+        action_logstd = self.action_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd) 
+
+        distr = Normal(action_mean, action_std)
 
         action = distr.sample()
         action_logprob = distr.log_prob(action)
@@ -110,11 +120,13 @@ class GaussActorCritic(nn.Module):
         return action.detach(), action_logprob.detach(), state_val.detach()
     
 
+    # evaluate previous state and previous action
     def evaluate(self, state, action):
         action_mean = self.actor(state)
-        action_var = self.action_var.expand_as(action_mean)
-        cov_mat = torch.diag_embed(action_var).to(device)
-        distr = MultivariateNormal(action_mean, cov_mat)
+        action_logstd = self.action_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
+        
+        distr = Normal(action_mean, action_std)
 
         # NOTE: if continuous action space is of dim 1, we gotta reshape action
         if self.action_dim == 1:
@@ -133,54 +145,36 @@ PPO Class with Continuous Action-Space
 =======================================
 '''
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std_dev_init=0.6):
-        self.action_std_dev = action_std_dev_init
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip):
         self.gamma = gamma
         self.K_epochs = K_epochs
         self.eps_clip = eps_clip
         
         self.buffer = RolloutBuffer()
 
-        self.policy = GaussActorCritic(state_dim, action_dim, action_std_dev_init).to(device)
-        self.policy_prev = GaussActorCritic(state_dim, action_dim, action_std_dev_init).to(device)
+        self.policy = GaussActorCritic(state_dim, action_dim).to(device)
+        self.policy_prev = GaussActorCritic(state_dim, action_dim).to(device)
         self.policy_prev.load_state_dict(self.policy.state_dict())
 
         self.optimizer = torch.optim.Adam([{'params' : self.policy.actor.parameters(), 'lr' : lr_actor},
-                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_critic}
+                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_critic},
+                                           {'params' : self.policy.action_logstd} # this is probably wrong, if so change back to self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr_actor)
                                           ])
-        self.MseLoss = nn.MSELoss()
-
-    
-    def set_action_std_dev(self, new_action_std_dev):
-        self.action_std_dev = new_action_std_dev
-        self.policy.set_action_std_dev(new_action_std_dev)
-        self.policy_prev.set_action_std_dev(new_action_std_dev)
-
-
-    def decay_action_std_dev(self, action_std_dev_decay_rate, min_action_std_dev):
-        self.action_std_dev = self.action_std_dev - action_std_dev_decay_rate
-        self.action_std_dev = round(self.action_std_dev, 4)
-
-        if (self.action_std_dev <= min_action_std_dev):
-            self.action_std_dev = min_action_std_dev
-            print("----set actor output action std dev to min action std dev : ", self.action_std_dev)
-        else:
-            print("----set actor output action std dev to : ", self.action_std_dev)
         
-        self.set_action_std_dev(self.action_std_dev)
+        self.MseLoss = nn.MSELoss()
 
     
     def sel_action(self, state):
         with torch.no_grad():
-                state = torch.FloatTensor(state).to(device)
-                action, action_logprob, state_val = self.policy_prev.act(state)
+            state = torch.FloatTensor(state).to(device)
+            action, action_logprob, state_val = self.policy_prev.act(state)
 
-                self.buffer.states.append(state)
-                self.buffer.actions.append(action)
-                self.buffer.logprobs.append(action_logprob)
-                self.buffer.state_vals.append(state_val)
+            self.buffer.states.append(state)
+            self.buffer.actions.append(action)
+            self.buffer.logprobs.append(action_logprob)
+            self.buffer.state_vals.append(state_val)
 
-                return action.detach().cpu().numpy().flatten()
+            return action.detach().cpu().numpy().flatten()
         
     
     def update(self):
