@@ -16,7 +16,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions import Categorical
 from torch.distributions import MultivariateNormal
 from torch.distributions import Normal
 
@@ -68,16 +67,16 @@ class GaussActorCritic(nn.Module):
 
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.action_var = torch.full((self.action_dim),
+        self.action_std = 0
+        self.action_var = torch.full((action_dim,), 
                                      action_std_dev_init * action_std_dev_init).to(device)
-        
-        # Actor network (output means)
+        # Actor network
         self.actor = nn.Sequential(
                                    nn.Linear(state_dim, 256),
                                    nn.Tanh(),
                                    nn.Linear(256, 256),
                                    nn.Tanh(),
-                                   nn.Linear(256, np.prod(action_dim)),
+                                   nn.Linear(256, action_dim),
                                    nn.Tanh()
                                    )
 
@@ -90,19 +89,10 @@ class GaussActorCritic(nn.Module):
                                     nn.Linear(256, 1)
                                    )
         
-        '''
-        Generate the log standard deviation, which are learnable NN params
-        that don't take any inputs.
-        Thus it's state independent
-        '''
         if action_dim > 1:
             self.action_logstd = nn.Parameter(torch.zeros(1, np.prod(action_dim)))
         else:
             self.action_logstd = nn.Parameter(torch.zeros(np.prod(action_dim)))
-
-
-    def forward(self):
-        raise NotImplementedError # since we used a sequential model
 
 
     def set_action_std_dev(self, new_action_std_dev):
@@ -110,19 +100,18 @@ class GaussActorCritic(nn.Module):
                                      new_action_std_dev * new_action_std_dev).to(device)
 
 
+    def forward(self):
+        raise NotImplementedError # since we used a sequential model
+
+
     def act(self, state):
-        '''
-        During forward pass, we get the means then get the log std
-        to match the output size of the means
-        '''
         action_mean = self.actor(state)
+        #cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
+        #distr = MultivariateNormal(action_mean, cov_mat)
+
         action_logstd = self.action_logstd.expand_as(action_mean)
-        action_std = torch.exp(action_logstd)
-
-        cov_mat = torch.diag(self.action_var + action_std).unsqueeze(dim=0)
-
-        #distr = Normal(action_mean, action_std)
-        distr = MultivariateNormal(action_mean, cov_mat)
+        self.action_std = torch.exp(action_logstd) 
+        distr = Normal(action_mean, self.action_std)
 
         action = distr.sample()
         action_logprob = distr.log_prob(action)
@@ -131,16 +120,15 @@ class GaussActorCritic(nn.Module):
         return action.detach(), action_logprob.detach(), state_val.detach()
     
 
-    # evaluate previous state and previous action
     def evaluate(self, state, action):
         action_mean = self.actor(state)
-        action_logstd = self.action_logstd.expand_as(action_mean)
-        action_std = torch.exp(action_logstd)
+        #action_var = self.action_var.expand_as(action_mean)
+        #cov_mat = torch.diag_embed(action_var).to(device)
+        #distr = MultivariateNormal(action_mean, cov_mat)
 
-        cov_mat = torch.diag(self.action_var + action_std).unsqueeze(dim=0)
-        
-        #distr = Normal(action_mean, action_std)
-        distr = MultivariateNormal(action_mean, cov_mat)
+        action_logstd = self.action_logstd.expand_as(action_mean)
+        self.action_std = torch.exp(action_logstd) 
+        distr = Normal(action_mean, self.action_std)
 
         # NOTE: if continuous action space is of dim 1, we gotta reshape action
         if self.action_dim == 1:
@@ -151,6 +139,15 @@ class GaussActorCritic(nn.Module):
         state_val = self.critic(state)
 
         return action_logprob, state_val, distr_entropy
+    
+    def get_action_and_value(self, x, action=None):
+        action_mean = self.actor(x)
+        action_logstd = self.action_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
+        probs = Normal(action_mean, action_std)
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
 
 
 '''
@@ -159,7 +156,7 @@ PPO Class with Continuous Action-Space
 =======================================
 '''
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std_dev_init):
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std_dev_init=0.6):
         self.action_std_dev = action_std_dev_init
         self.gamma = gamma
         self.K_epochs = K_epochs
@@ -172,8 +169,8 @@ class PPO:
         self.policy_prev.load_state_dict(self.policy.state_dict())
 
         self.optimizer = torch.optim.Adam([{'params' : self.policy.actor.parameters(), 'lr' : lr_actor},
-                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_critic},
-                                           {'params' : self.policy.action_logstd}
+                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_actor},
+                                           {'params' : self.policy.action_logstd, 'lr' : lr_actor}
                                           ])
         
         self.MseLoss = nn.MSELoss()
@@ -200,15 +197,15 @@ class PPO:
     
     def sel_action(self, state):
         with torch.no_grad():
-            state = torch.FloatTensor(state).to(device)
-            action, action_logprob, state_val = self.policy_prev.act(state)
+                state = torch.FloatTensor(state).to(device)
+                action, action_logprob, state_val = self.policy_prev.act(state)
 
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-            self.buffer.state_vals.append(state_val)
+                self.buffer.states.append(state)
+                self.buffer.actions.append(action)
+                self.buffer.logprobs.append(action_logprob)
+                self.buffer.state_vals.append(state_val)
 
-            return action.detach().cpu().numpy().flatten()
+                return action.detach().cpu().numpy().flatten()
         
     
     def update(self):
@@ -237,8 +234,8 @@ class PPO:
         advantages = rewards.detach() - prev_state_vals.detach()
 
         # Optimize policy for K epochs
-        for iter in range(self.K_epochs):
-            
+        for epoch in range(self.K_epochs):
+
             # Evaluate prev actions and values
             logprobs, state_vals, distr_entropy = self.policy.evaluate(prev_states, prev_actions)
 
