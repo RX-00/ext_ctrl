@@ -51,6 +51,11 @@ def train():
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
     freq_log_avg_rwrd = ep_len_max * 2    # frequency to log avg reward return, units: [num timesteps]
 
+    action_std_dev = 0.6                  # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
+    action_std_dev_decay_rate = 0.05      # linearly decay action_std_dev
+    min_action_std_dev = 0.1              # can't decay std dev more than this val
+    
+
     print("Gymnasium env: " + env_id)
 
     env = gym.make(env_id, render_mode_num)
@@ -112,7 +117,7 @@ def train():
     -------------------
     '''
     ppoAgent = PPO(state_dim, action_dim, lr_actor, lr_critic,
-                    gamma, K_epochs, eps_clip)
+                    gamma, K_epochs, eps_clip, action_std_dev)
     
     # for tracking total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -152,6 +157,8 @@ def train():
             # update PPO agent
             if time_step % update_timestep == 0:
                 ppoAgent.update()
+                # decay action std dev of output action distribution
+                ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
 
             # write log to logging file
             if time_step % freq_log_avg_rwrd == 0:
@@ -181,7 +188,7 @@ def train():
             if time_step % freq_save_model == 0:
                 print("Saving model at: ", checkpoint_path)
                 ppoAgent.save(checkpoint_path)
-                print("... model saved | action_logstd : ", ppoAgent.policy_prev.action_logstd)
+                print("... model saved")
                 print("Elapsed time: ", datetime.now().replace(microsecond=0) - start_time)
 
             # break if episode is terminated or truncated

@@ -63,11 +63,13 @@ Gaussian Actor & Critic Class
 '''
 # NOTE: 
 class GaussActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, action_std_dev_init):
         super(GaussActorCritic, self).__init__()
 
         self.state_dim = state_dim
         self.action_dim = action_dim
+        self.action_var = torch.full((self.action_dim),
+                                     action_std_dev_init * action_std_dev_init).to(device)
         
         # Actor network (output means)
         self.actor = nn.Sequential(
@@ -98,8 +100,14 @@ class GaussActorCritic(nn.Module):
         else:
             self.action_logstd = nn.Parameter(torch.zeros(np.prod(action_dim)))
 
+
     def forward(self):
         raise NotImplementedError # since we used a sequential model
+
+
+    def set_action_std_dev(self, new_action_std_dev):
+        self.action_var = torch.full((self.action_dim,),
+                                     new_action_std_dev * new_action_std_dev).to(device)
 
 
     def act(self, state):
@@ -109,9 +117,12 @@ class GaussActorCritic(nn.Module):
         '''
         action_mean = self.actor(state)
         action_logstd = self.action_logstd.expand_as(action_mean)
-        action_std = torch.exp(action_logstd) 
+        action_std = torch.exp(action_logstd)
 
-        distr = Normal(action_mean, action_std)
+        cov_mat = torch.diag(self.action_var + action_std).unsqueeze(dim=0)
+
+        #distr = Normal(action_mean, action_std)
+        distr = MultivariateNormal(action_mean, cov_mat)
 
         action = distr.sample()
         action_logprob = distr.log_prob(action)
@@ -125,8 +136,11 @@ class GaussActorCritic(nn.Module):
         action_mean = self.actor(state)
         action_logstd = self.action_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
+
+        cov_mat = torch.diag(self.action_var + action_std).unsqueeze(dim=0)
         
-        distr = Normal(action_mean, action_std)
+        #distr = Normal(action_mean, action_std)
+        distr = MultivariateNormal(action_mean, cov_mat)
 
         # NOTE: if continuous action space is of dim 1, we gotta reshape action
         if self.action_dim == 1:
@@ -145,23 +159,43 @@ PPO Class with Continuous Action-Space
 =======================================
 '''
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip):
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std_dev_init):
+        self.action_std_dev = action_std_dev_init
         self.gamma = gamma
         self.K_epochs = K_epochs
         self.eps_clip = eps_clip
         
         self.buffer = RolloutBuffer()
 
-        self.policy = GaussActorCritic(state_dim, action_dim).to(device)
-        self.policy_prev = GaussActorCritic(state_dim, action_dim).to(device)
+        self.policy = GaussActorCritic(state_dim, action_dim, action_std_dev_init).to(device)
+        self.policy_prev = GaussActorCritic(state_dim, action_dim, action_std_dev_init).to(device)
         self.policy_prev.load_state_dict(self.policy.state_dict())
 
         self.optimizer = torch.optim.Adam([{'params' : self.policy.actor.parameters(), 'lr' : lr_actor},
                                            {'params' : self.policy.critic.parameters(), 'lr' : lr_critic},
-                                           {'params' : self.policy.action_logstd} # this is probably wrong, if so change back to self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr_actor)
+                                           {'params' : self.policy.action_logstd}
                                           ])
         
         self.MseLoss = nn.MSELoss()
+
+    
+    def set_action_std_dev(self, new_action_std_dev):
+        self.action_std_dev = new_action_std_dev
+        self.policy.set_action_std_dev(new_action_std_dev)
+        self.policy_prev.set_action_std_dev(new_action_std_dev)
+
+
+    def decay_action_std_dev(self, action_std_dev_decay_rate, min_action_std_dev):
+        self.action_std_dev = self.action_std_dev - action_std_dev_decay_rate
+        self.action_std_dev = round(self.action_std_dev, 4)
+
+        if (self.action_std_dev <= min_action_std_dev):
+            self.action_std_dev = min_action_std_dev
+            print("----set actor output action std dev to min action std dev : ", self.action_std_dev)
+        else:
+            print("----set actor output action std dev to : ", self.action_std_dev)
+        
+        self.set_action_std_dev(self.action_std_dev)
 
     
     def sel_action(self, state):
