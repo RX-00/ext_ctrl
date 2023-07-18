@@ -43,18 +43,22 @@ def calc_width_curve_weight(weight_w, weight_c, trajs):
 Function to select a random trajectory
 =======================================
 '''
-def sample_rand_traj():
+def sample_rand_traj(ts, max_ts):
     traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
     # traj file numbering trackers
     '''
     NOTE: has to be the same as in the cartpole_LQR_trajs.py trajectory
             collector program
     '''
-    cart_positions = np.arange(-1.8, 1.9, 0.05).size # cart_positions
-    pend_positions = np.arange(-0.5, 0.6, 0.05).size # pend_positions
+    cart_positions = np.arange(-1.8, 1.9, 0.05).size # cart_positions 74
+    pend_positions = np.arange(-0.5, 0.6, 0.05).size # pend_positions 22
 
-    i = random.randint(0, cart_positions - 1)
-    j = random.randint(0, pend_positions - 1)
+    # NOTE: As the training continues, start to sample from more
+    #       of the data
+    rnge = int((max_ts - ts) / (max_ts / 10))
+
+    i = random.randint(0 + rnge, cart_positions - 1 - rnge)
+    j = random.randint(0 + rnge, pend_positions - 1 - rnge)
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
     traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
@@ -81,13 +85,13 @@ def train():
     render_mode = "depth_array"           # NOTE: depth_array for no render, human for yes render
     render_mode_num = 2                   # NOTE: 2 for depth_array, 0 for human render
     ep_len_max = 500                      # max timesteps in one episode
-    train_timesteps_max = int(3e8)        # training truncated if timesteps > train_timesteps_max
+    train_timesteps_max = int(1e7)        # training truncated if timesteps > train_timesteps_max
 
     freq_save_model = int(1e4)            # frequency to save model, units: [num timesteps]
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
     freq_log_avg_rwrd = ep_len_max * 2    # frequency to log avg reward return, units: [num timesteps]
 
-    action_std_dev = 1.10                 # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
+    action_std_dev = 1.90                 # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
     action_std_dev_decay_rate = 0.001      # linearly decay action_std_dev
     min_action_std_dev = 0.001            # can't decay std dev more than this val
     
@@ -104,11 +108,11 @@ def train():
     --------------------
     '''
     update_timestep = ep_len_max * 3    # update policy every n timesteps
-    K_epochs = 70 # NOTE: don't wanna be too high cuz overfitting  # update policy for K epochs in a single PPO update
+    K_epochs = 80 # NOTE: don't wanna be too high cuz overfitting  # update policy for K epochs in a single PPO update
     eps_clip = 0.2                      # clip param for PPO-Clip Objective Function
     gamma = 0.99                        # discount factor
     lr_actor = 1e-4                     # learning rate for actor NN
-    lr_critic = 0.005                   # learning rate for critic NN
+    lr_critic = 5e-4                   # learning rate for critic NN
 
     # weights for reward function
     weight_h = 1 # determines max reward val
@@ -183,7 +187,7 @@ def train():
         curr_ep_rwrd = 0
 
         # select the trajectory to determine reward with
-        npzfile = sample_rand_traj()
+        npzfile = sample_rand_traj(time_step, train_timesteps_max)
 
         # recorded trajectories
         xs         = npzfile['xs']
@@ -204,7 +208,7 @@ def train():
         NOTE: Make sure it lines up with how ob vector is put together:
                 [x, theta, x_dot, theta_dot] + u
         '''
-        interm_weights = [w_x, w_theta, w_x_dot, w_theta_dot, w_u]
+        interm_weights = [w_x, w_theta, w_x_dot, w_theta_dot] #, w_u]
 
         # get and set init state for episode
         sys_qpos = env.unwrapped.data.qpos
