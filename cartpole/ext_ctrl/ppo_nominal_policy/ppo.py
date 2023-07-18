@@ -64,7 +64,7 @@ Gaussian Actor & Critic Class
 class GaussActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, action_std_dev_init):
         super(GaussActorCritic, self).__init__()
-
+        ls = 64
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.action_std = 0
@@ -72,21 +72,21 @@ class GaussActorCritic(nn.Module):
                                      action_std_dev_init * action_std_dev_init).to(device)
         # Actor network
         self.actor = nn.Sequential(
-                                   nn.Linear(state_dim, 256),
+                                   nn.Linear(state_dim, ls),
                                    nn.Tanh(),
-                                   nn.Linear(256, 256),
+                                   nn.Linear(ls, ls),
                                    nn.Tanh(),
-                                   nn.Linear(256, action_dim),
+                                   nn.Linear(ls, action_dim),
                                    nn.Tanh()
                                    )
 
         # Critic network
         self.critic = nn.Sequential(
-                                    nn.Linear(state_dim, 256),
+                                    nn.Linear(state_dim, ls),
                                     nn.Tanh(),
-                                    nn.Linear(256, 256),
+                                    nn.Linear(ls, ls),
                                     nn.Tanh(),
-                                    nn.Linear(256, 1)
+                                    nn.Linear(ls, 1)
                                    )
         
         if action_dim > 1:
@@ -106,12 +106,13 @@ class GaussActorCritic(nn.Module):
 
     def act(self, state):
         action_mean = self.actor(state)
-        #cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-        #distr = MultivariateNormal(action_mean, cov_mat)
+        cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
+        distr = MultivariateNormal(action_mean, cov_mat)
 
-        action_logstd = self.action_logstd.expand_as(action_mean)
-        self.action_std = torch.exp(action_logstd) 
-        distr = Normal(action_mean, self.action_std)
+        # NOTE: for learning continuous action space standard deviation
+        #action_logstd = self.action_logstd.expand_as(action_mean)
+        #self.action_std = torch.exp(action_logstd) 
+        #distr = Normal(action_mean, self.action_std)
 
         action = distr.sample()
         action_logprob = distr.log_prob(action)
@@ -122,13 +123,14 @@ class GaussActorCritic(nn.Module):
 
     def evaluate(self, state, action):
         action_mean = self.actor(state)
-        #action_var = self.action_var.expand_as(action_mean)
-        #cov_mat = torch.diag_embed(action_var).to(device)
-        #distr = MultivariateNormal(action_mean, cov_mat)
+        action_var = self.action_var.expand_as(action_mean)
+        cov_mat = torch.diag_embed(action_var).to(device)
+        distr = MultivariateNormal(action_mean, cov_mat)
 
-        action_logstd = self.action_logstd.expand_as(action_mean)
-        self.action_std = torch.exp(action_logstd) 
-        distr = Normal(action_mean, self.action_std)
+        # NOTE: for learning continuous action space standard deviation
+        #action_logstd = self.action_logstd.expand_as(action_mean)
+        #self.action_std = torch.exp(action_logstd) 
+        #distr = Normal(action_mean, self.action_std)
 
         # NOTE: if continuous action space is of dim 1, we gotta reshape action
         if self.action_dim == 1:
@@ -168,8 +170,10 @@ class PPO:
         self.policy_prev = GaussActorCritic(state_dim, action_dim, action_std_dev_init).to(device)
         self.policy_prev.load_state_dict(self.policy.state_dict())
 
+        # NOTE: for some reason, you need to make sure all the NN's have the same learning rate,
+        #       otherwise the learned parameter will continue to explode
         self.optimizer = torch.optim.Adam([{'params' : self.policy.actor.parameters(), 'lr' : lr_actor},
-                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_actor},
+                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_critic},
                                            {'params' : self.policy.action_logstd, 'lr' : lr_actor}
                                           ])
         

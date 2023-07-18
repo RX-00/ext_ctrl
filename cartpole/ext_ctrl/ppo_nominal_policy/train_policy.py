@@ -85,10 +85,10 @@ def train():
 
     freq_save_model = int(1e4)            # frequency to save model, units: [num timesteps]
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
-    freq_log_avg_rwrd = ep_len_max * 4    # frequency to log avg reward return, units: [num timesteps]
+    freq_log_avg_rwrd = ep_len_max * 2    # frequency to log avg reward return, units: [num timesteps]
 
-    action_std_dev = 3.001                # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
-    action_std_dev_decay_rate = 0.01      # linearly decay action_std_dev
+    action_std_dev = 1.10                 # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
+    action_std_dev_decay_rate = 0.001      # linearly decay action_std_dev
     min_action_std_dev = 0.001            # can't decay std dev more than this val
     
 
@@ -103,12 +103,12 @@ def train():
     PPO Hyperparameters
     --------------------
     '''
-    update_timestep = ep_len_max * 2    # update policy every n timesteps
-    K_epochs = 90                       # update policy for K epochs in a single PPO update
+    update_timestep = ep_len_max * 3    # update policy every n timesteps
+    K_epochs = 70 # NOTE: don't wanna be too high cuz overfitting  # update policy for K epochs in a single PPO update
     eps_clip = 0.2                      # clip param for PPO-Clip Objective Function
     gamma = 0.99                        # discount factor
-    lr_actor = 0.0001                   # learning rate for actor NN
-    lr_critic = 0.0005                  # learning rate for critic NN
+    lr_actor = 1e-4                     # learning rate for actor NN
+    lr_critic = 0.005                   # learning rate for critic NN
 
     # weights for reward function
     weight_h = 1 # determines max reward val
@@ -141,7 +141,7 @@ def train():
     Checkpointing policy learning
     ------------------------------
     '''
-    num_pretrained = 0 # NOTE: This determines file name for the weights
+    num_pretrained = 1 # NOTE: This determines file name for the weights
     dir = "ext_ctrl_pretrained"
     if not os.path.exists(dir):
         os.makedirs(dir)
@@ -175,6 +175,7 @@ def train():
     log_running_eps = 0
     time_step = 0
     iter_episode = 0
+
 
     # main training loop
     while time_step <= train_timesteps_max:
@@ -240,8 +241,7 @@ def train():
             if time_step % update_timestep == 0:
                 ppoAgent.update()
                 # decay action std dev of output action distribution
-                #ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
-                print("----action_std: ", ppoAgent.policy_prev.action_std)
+                ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
 
             # write log to logging file
             if time_step % freq_log_avg_rwrd == 0:
@@ -263,6 +263,7 @@ def train():
                 print_avg_rwrd = round(print_avg_rwrd, 2)
 
                 print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(iter_episode, time_step, print_avg_rwrd))
+                print("----action_std: ", ppoAgent.policy_prev.action_std)
 
                 print_running_rwrd = 0
                 print_running_eps = 0
