@@ -43,7 +43,7 @@ def calc_width_curve_weight(weight_w, weight_c, trajs):
 Function to select a random trajectory
 =======================================
 '''
-def sample_rand_traj(ts, max_ts):
+def sample_rand_traj():
     traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
     # traj file numbering trackers
     '''
@@ -53,12 +53,8 @@ def sample_rand_traj(ts, max_ts):
     cart_positions = np.arange(-1.8, 1.9, 0.05).size # cart_positions 74
     pend_positions = np.arange(-0.5, 0.6, 0.05).size # pend_positions 22
 
-    # NOTE: As the training continues, start to sample from more
-    #       of the data
-    rnge = int((max_ts - ts) / (max_ts / 10))
-
-    i = random.randint(0 + rnge, cart_positions - 1 - rnge)
-    j = random.randint(0 + rnge, pend_positions - 1 - rnge)
+    i = random.randint(0, cart_positions - 1)
+    j = random.randint(0, pend_positions - 1)
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
     traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
@@ -91,10 +87,12 @@ def train():
     freq_print_avg_rwrd = ep_len_max * 10 # frequency to print avg reward return, units: [num timesteps]
     freq_log_avg_rwrd = ep_len_max * 2    # frequency to log avg reward return, units: [num timesteps]
 
-    action_std_dev = 1.90                 # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
+    action_std_dev = 5.90                 # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
     action_std_dev_decay_rate = 0.001      # linearly decay action_std_dev
     min_action_std_dev = 0.001            # can't decay std dev more than this val
     
+    # learn or manually decay
+    isDecay = False
 
     print("Gymnasium env: " + env_id)
 
@@ -162,7 +160,7 @@ def train():
     -------------------
     '''
     ppoAgent = PPO(state_dim, action_dim, lr_actor, lr_critic,
-                    gamma, K_epochs, eps_clip, action_std_dev)
+                    gamma, K_epochs, eps_clip, action_std_dev, isDecay)
     
     # for tracking total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -187,7 +185,7 @@ def train():
         curr_ep_rwrd = 0
 
         # select the trajectory to determine reward with
-        npzfile = sample_rand_traj(time_step, train_timesteps_max)
+        npzfile = sample_rand_traj()
 
         # recorded trajectories
         xs         = npzfile['xs']
@@ -245,7 +243,8 @@ def train():
             if time_step % update_timestep == 0:
                 ppoAgent.update()
                 # decay action std dev of output action distribution
-                ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
+                if (isDecay):
+                    ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
 
             # write log to logging file
             if time_step % freq_log_avg_rwrd == 0:

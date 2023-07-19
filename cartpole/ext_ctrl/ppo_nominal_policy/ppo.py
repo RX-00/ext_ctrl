@@ -62,9 +62,10 @@ Gaussian Actor & Critic Class
 '''
 # NOTE: 
 class GaussActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, action_std_dev_init):
+    def __init__(self, state_dim, action_dim, action_std_dev_init, isDecay=True):
         super(GaussActorCritic, self).__init__()
         ls = 64
+        self.isDecay = isDecay
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.action_std = 0
@@ -106,13 +107,17 @@ class GaussActorCritic(nn.Module):
 
     def act(self, state):
         action_mean = self.actor(state)
-        cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-        distr = MultivariateNormal(action_mean, cov_mat)
+        
+        if (self.isDecay):
+            action_var = self.action_var.expand_as(action_mean)
+            cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
+            distr = MultivariateNormal(action_mean, cov_mat)
 
         # NOTE: for learning continuous action space standard deviation
-        #action_logstd = self.action_logstd.expand_as(action_mean)
-        #self.action_std = torch.exp(action_logstd) 
-        #distr = Normal(action_mean, self.action_std)
+        else: # learn action_logstd
+            action_logstd = self.action_logstd.expand_as(action_mean)
+            self.action_std = torch.exp(action_logstd) 
+            distr = Normal(action_mean, self.action_std)
 
         action = distr.sample()
         action_logprob = distr.log_prob(action)
@@ -123,14 +128,17 @@ class GaussActorCritic(nn.Module):
 
     def evaluate(self, state, action):
         action_mean = self.actor(state)
-        action_var = self.action_var.expand_as(action_mean)
-        cov_mat = torch.diag_embed(action_var).to(device)
-        distr = MultivariateNormal(action_mean, cov_mat)
+        
+        if (self.isDecay):
+            action_var = self.action_var.expand_as(action_mean)
+            cov_mat = torch.diag_embed(action_var).to(device)
+            distr = MultivariateNormal(action_mean, cov_mat)
 
         # NOTE: for learning continuous action space standard deviation
-        #action_logstd = self.action_logstd.expand_as(action_mean)
-        #self.action_std = torch.exp(action_logstd) 
-        #distr = Normal(action_mean, self.action_std)
+        else: # learn action_logstd
+            action_logstd = self.action_logstd.expand_as(action_mean)
+            self.action_std = torch.exp(action_logstd) 
+            distr = Normal(action_mean, self.action_std)
 
         # NOTE: if continuous action space is of dim 1, we gotta reshape action
         if self.action_dim == 1:
@@ -158,7 +166,7 @@ PPO Class with Continuous Action-Space
 =======================================
 '''
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std_dev_init=0.6):
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std_dev_init=0.6, isDecay=True):
         self.action_std_dev = action_std_dev_init
         self.gamma = gamma
         self.K_epochs = K_epochs
@@ -166,14 +174,20 @@ class PPO:
         
         self.buffer = RolloutBuffer()
 
-        self.policy = GaussActorCritic(state_dim, action_dim, action_std_dev_init).to(device)
-        self.policy_prev = GaussActorCritic(state_dim, action_dim, action_std_dev_init).to(device)
+        self.policy = GaussActorCritic(state_dim, action_dim, action_std_dev_init, isDecay).to(device)
+        self.policy_prev = GaussActorCritic(state_dim, action_dim, action_std_dev_init, isDecay).to(device)
         self.policy_prev.load_state_dict(self.policy.state_dict())
 
         # NOTE: for some reason, you need to make sure all the NN's have the same learning rate,
         #       otherwise the learned parameter will continue to explode
-        self.optimizer = torch.optim.Adam([{'params' : self.policy.actor.parameters(), 'lr' : lr_actor},
+        if (isDecay):
+            self.optimizer = torch.optim.Adam([{'params' : self.policy.actor.parameters(), 'lr' : lr_actor},
                                            {'params' : self.policy.critic.parameters(), 'lr' : lr_critic},
+                                           {'params' : self.policy.action_logstd, 'lr' : lr_actor}
+                                          ])
+        else:
+            self.optimizer = torch.optim.Adam([{'params' : self.policy.actor.parameters(), 'lr' : lr_actor},
+                                           {'params' : self.policy.critic.parameters(), 'lr' : lr_actor},
                                            {'params' : self.policy.action_logstd, 'lr' : lr_actor}
                                           ])
         

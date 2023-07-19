@@ -64,7 +64,7 @@ def test():
     ppoAgent.load(checkpoint_path)
 
 
-    test_running_reward = 0
+    test_running_reward = 1
 
     for ep in range(1, num_test_eps + 1):
         ep_reward = 0
