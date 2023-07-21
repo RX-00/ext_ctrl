@@ -16,7 +16,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions import Categorical
 from torch.distributions import MultivariateNormal
 from torch.distributions import Normal
 
@@ -65,33 +64,37 @@ Gaussian Actor & Critic Class
 class GaussActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, action_std_dev_init, isDecay=True):
         super(GaussActorCritic, self).__init__()
+        ls = 64
         self.isDecay = isDecay
         self.state_dim = state_dim
         self.action_dim = action_dim
+        self.action_std = 0
         self.action_var = torch.full((action_dim,), 
                                      action_std_dev_init * action_std_dev_init).to(device)
         # Actor network
         self.actor = nn.Sequential(
-                                   nn.Linear(state_dim, 64),
+                                   nn.Linear(state_dim, ls),
                                    nn.Tanh(),
-                                   nn.Linear(64, 64),
+                                   nn.Linear(ls, ls),
                                    nn.Tanh(),
-                                   nn.Linear(64, action_dim),
+                                   nn.Linear(ls, action_dim),
                                    nn.Tanh()
                                    )
 
         # Critic network
         self.critic = nn.Sequential(
-                                    nn.Linear(state_dim, 64),
+                                    nn.Linear(state_dim, ls),
                                     nn.Tanh(),
-                                    nn.Linear(64, 64),
+                                    nn.Linear(ls, ls),
                                     nn.Tanh(),
-                                    nn.Linear(64, 1)
+                                    nn.Linear(ls, 1)
                                    )
+        
         if action_dim > 1:
             self.action_logstd = nn.Parameter(torch.zeros(1, np.prod(action_dim)))
         else:
             self.action_logstd = nn.Parameter(torch.zeros(np.prod(action_dim)))
+
 
     def set_action_std_dev(self, new_action_std_dev):
         self.action_var = torch.full((self.action_dim,),
@@ -147,6 +150,15 @@ class GaussActorCritic(nn.Module):
         state_val = self.critic(state)
 
         return action_logprob, state_val, distr_entropy
+    
+    def get_action_and_value(self, x, action=None):
+        action_mean = self.actor(x)
+        action_logstd = self.action_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
+        probs = Normal(action_mean, action_std)
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
 
 
 '''
@@ -179,7 +191,7 @@ class PPO:
                                            {'params' : self.policy.critic.parameters(), 'lr' : lr_actor},
                                            {'params' : self.policy.action_logstd, 'lr' : lr_actor}
                                           ])
-            
+        
         self.MseLoss = nn.MSELoss()
 
     
@@ -241,8 +253,8 @@ class PPO:
         advantages = rewards.detach() - prev_state_vals.detach()
 
         # Optimize policy for K epochs
-        for iter in range(self.K_epochs):
-            
+        for epoch in range(self.K_epochs):
+
             # Evaluate prev actions and values
             logprobs, state_vals, distr_entropy = self.policy.evaluate(prev_states, prev_actions)
 

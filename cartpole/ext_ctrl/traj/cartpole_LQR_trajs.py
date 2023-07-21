@@ -159,6 +159,7 @@ class TrajCollector():
 
     '''
     Run sim and collecting reference trajectories
+    NOTE: collecting only the sucessful runs
     '''
     def run_sim_collect_traj(self):
         '''
@@ -167,10 +168,11 @@ class TrajCollector():
         print("Collecting trajectories...")
 
         # NOTE: one interval bigger (end val) than needed for purpose of including the prev val
-        cart_positions = np.arange(-1.8, 1.9, 0.05)  # NOTE: max and min of the railings of the cartpole
-        pend_positions = np.arange(-0.5, 0.6, 0.05) # NOTE: ~half circle range of pend, -pi/2 to pi/2 where 0 is pend up
+        cart_positions = np.arange(-1.8, 1.9, 0.01)  # NOTE: max and min of the railings of the cartpole
+        pend_positions = np.arange(-1.5, 1.6, 0.01) # NOTE: ~half circle range of pend, -pi/2 to pi/2 where 0 is pend up
         i = 0
         j = 0
+        indx = 0
 
         for cart_pos_offset in cart_positions:
             for pend_pos_offset in pend_positions:
@@ -214,15 +216,17 @@ class TrajCollector():
                     #       be more generalizable. There definitely is a better
                     #       way to do this though.
 
-                # saving state vars
-                file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/"
-                file_path = (file_path + 'traj' + str(i) + '_' + 
-                                                  str(j) + '.npz')
-                np.savez(file_path, xs=self.xs,
-                                    x_dots=self.x_dots,
-                                    thetas=self.thetas,
-                                    theta_dots=self.theta_dots,
-                                    us=self.us)
+                # only save if end state was successful at balancing
+                if (abs(self.xs[500]) < 1e-04 and abs(self.thetas[500]) < 1e-04):
+                    # saving state vars
+                    file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs1/"
+                    file_path = (file_path + 'traj_' + str(indx) + '.npz')
+                    np.savez(file_path, xs=self.xs,
+                                        x_dots=self.x_dots,
+                                        thetas=self.thetas,
+                                        theta_dots=self.theta_dots,
+                                        us=self.us)
+                    indx += 1
                 j = j + 1
             i = i + 1
             j = 0
@@ -279,7 +283,7 @@ if __name__ == "__main__":
 
     
     file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
-    file_path = file_path + 'traj73_0.npz'
+    file_path = file_path + 'traj73.npz'
     npzfile = np.load(file_path)
 
     xs         = npzfile['xs']

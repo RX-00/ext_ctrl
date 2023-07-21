@@ -54,7 +54,7 @@ def train():
     action_std_dev = 0.6                  # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
     action_std_dev_decay_rate = 0.05      # linearly decay action_std_dev
     min_action_std_dev = 0.1              # can't decay std dev more than this val
-    
+    isDecay = True
 
     print("Gymnasium env: " + env_id)
 
@@ -117,7 +117,7 @@ def train():
     -------------------
     '''
     ppoAgent = PPO(state_dim, action_dim, lr_actor, lr_critic,
-                    gamma, K_epochs, eps_clip, action_std_dev)
+                    gamma, K_epochs, eps_clip, action_std_dev, isDecay)
     
     # for tracking total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -158,7 +158,7 @@ def train():
             if time_step % update_timestep == 0:
                 ppoAgent.update()
                 # decay action std dev of output action distribution
-                ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
+                #ppoAgent.decay_action_std_dev(action_std_dev_decay_rate, min_action_std_dev)
 
             # write log to logging file
             if time_step % freq_log_avg_rwrd == 0:

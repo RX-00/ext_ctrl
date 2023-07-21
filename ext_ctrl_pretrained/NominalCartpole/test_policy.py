@@ -55,13 +55,13 @@ def test():
     
     # loading up weights
     # NOTE: Choose the number of the pretrained model weights you want to test
-    run_num_pretrained = 1
+    run_num_pretrained = 2
 
     directory = "ext_ctrl_pretrained" + '/' + env_id + '/'
     checkpoint_path = directory + "ext_ctrl_{}_{}.pth".format(env_id, run_num_pretrained)
     print("loading network from : " + checkpoint_path)
 
-    ppoAgent.load(checkpoint_path)
+    ppoAgent.load("ext_ctrl_NominalCartpole_1.pth")
 
 
     test_running_reward = 1

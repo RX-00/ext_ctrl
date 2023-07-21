@@ -152,8 +152,10 @@ if __name__ == '__main__':
     j = random.randint(0, pend_positions - 1)
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
-    traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
-                                                str(j) + '.npz')
+    # traj_file_path = (traj_file_path + 'traj' + str(i) + '_' +
+    #                                             str(j) + '.npz')
+
+    traj_file_path = (traj_file_path + 'traj_' + str(1000) + '.npz')
     
     npzfile = np.load(traj_file_path)
 
@@ -163,6 +165,19 @@ if __name__ == '__main__':
     thetas     = npzfile['thetas']
     theta_dots = npzfile['theta_dots']
     us         = npzfile['us']
+
+    u_max = 0
+    for i in range(23349):
+        traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
+        traj_file_path = (traj_file_path + 'traj_' + str(i) + '.npz')
+        npzfile = np.load(traj_file_path)
+
+        for j in range(npzfile['us'].size):
+            us = npzfile['us']
+            if (np.abs(us[j]) > u_max):
+                u_max = us[j]
+                print(u_max)
+
 
     fig, axs = plt.subplots(4, 1, constrained_layout=True)
     fig.suptitle('Cartpole state vector', fontsize=16)
