@@ -2,7 +2,10 @@
 Repo for work on extending state-space control methods with reinforcement learning methods.
 
 ## Systems for testing
-- cartpole: 
+- cartpole Balance (LQR): 
+    - inverted pendulum on a cart from gym 0.14.0
+    - cartpole simulation in mujoco \
+- cartpole Swing-Up: 
     - inverted pendulum on a cart from gym 0.14.0
     - cartpole simulation in mujoco \
 - slip: spring loaded inverted pendulum in mujoco

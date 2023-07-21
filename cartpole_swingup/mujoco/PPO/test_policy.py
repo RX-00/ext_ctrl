@@ -1,8 +1,8 @@
 '''
 
-Testing program for pre-trained policy that's supposed to learn the behavior
-of a state-space controller (e.g. LQR) on a cartpole in a nominal environment (i.e.
-the tilt of the track is zero, the pendulum doesn't have even mass distribution).
+Testing program for pre-trained policy that's supposed to learn to control
+a cartpole in a nominal environment (i.e. the tilt of the track is zero, 
+the pendulum doesn't have even mass distribution).
 
 '''
 
@@ -32,12 +32,14 @@ def test():
     env_id = "NominalCartpole"
     render_mode = "human"                 # NOTE: depth_array for no render, human for yes render
     ep_len_max = 500                      # max timesteps in one episode
+    
     # NOTE: action_std_dev needs to be the SAME
     #       as the action distrbution which was used while saving
     action_std_dev = 0.1            # initial std dev for action distr (Multivariate Normal, i.e. Gaussian)
     
     num_test_eps = 10
 
+    # NOTE: These should be the same as in train_policy.py
     K_epochs = 80                       # update policy for K epochs in a single PPO update
     eps_clip = 0.2                      # clip param for PPO-Clip Objective Function
     gamma = 0.99                        # discount factor
@@ -55,16 +57,16 @@ def test():
     
     # loading up weights
     # NOTE: Choose the number of the pretrained model weights you want to test
-    run_num_pretrained = 1
+    run_num_pretrained = 0
 
-    directory = "ext_ctrl_pretrained" + '/' + env_id + '/'
-    checkpoint_path = directory + "ext_ctrl_{}_{}.pth".format(env_id, run_num_pretrained)
+    directory = "ppo_pretrained" + '/' + env_id + '/'
+    checkpoint_path = directory + "PPO_{}_{}.pth".format(env_id, run_num_pretrained)
     print("loading network from : " + checkpoint_path)
 
-    ppoAgent.load("ext_ctrl_NominalCartpole_1.pth")
+    ppoAgent.load(checkpoint_path)
 
 
-    test_running_reward = 1
+    test_running_reward = 0
 
     for ep in range(1, num_test_eps + 1):
         ep_reward = 0
@@ -76,8 +78,8 @@ def test():
             state, reward, done, _, _ = env.step(action)
             ep_reward += reward
 
-            # if done:
-            #     break
+            if done:
+                break
         
         # clear rollout buffer
         ppoAgent.buffer.clear()
