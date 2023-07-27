@@ -16,6 +16,7 @@ import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from distutils.util import strtobool
+from datetime import datetime
 
 import ext_ctrl_envs
 
@@ -48,7 +49,7 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="NominalCartpole",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=1000000,
+    parser.add_argument("--total-timesteps", type=int, default=100000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=3e-4,
         help="the learning rate of the optimizer")
@@ -118,7 +119,7 @@ def make_env(env_id, idx, capture_video, run_name, gamma):
 Make the policy learn!
 =======================
 '''
-def train():
+def train(freq_save_model, path):
     print("\n\n\nBeginning training...")
     args = parse_args()
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
@@ -169,7 +170,7 @@ def train():
     start_time = time.time()
     next_obs, _ = envs.reset(seed=args.seed)
     next_obs = torch.Tensor(next_obs).to(device)
-    next_done = torch.zeroes(args.num_envs).to(device)
+    next_done = torch.zeros(args.num_envs).to(device)
     num_updates = args.total_timesteps // args.batch_size
 
     for update in range(1, num_updates + 1):
@@ -185,12 +186,96 @@ def train():
             # update batch data
             ppoAgent.obs[step] = next_obs
             ppoAgent.dones[step] = next_done
+
+            # action logic
             with torch.no_grad():
                 action, logprob, _, value = ppoAgent.agent.get_action_and_value(next_obs)
                 ppoAgent.values[step] = value.flatten()
             ppoAgent.actions[step] = action
-            
+            ppoAgent.logprobs[step] = logprob
+
+            # execute the game and log data.
+            next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
+            done = np.logical_or(terminated, truncated)
+            ppoAgent.rewards[step] = torch.tensor(reward).to(device).view(-1)
+            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
+
+            # Only print when at least 1 env is done
+            if "final_info" not in infos:
+                continue
+
+            for info in infos["final_info"]:
+                # Skip the envs that are not done
+                if info is None:
+                    continue
+                #print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+
+        # bootstrap the value if not done (terminated)
+        with torch.no_grad():
+            next_value = ppoAgent.agent.get_value(next_obs).reshape(1, -1)
+            advantages = torch.zeros_like(ppoAgent.rewards).to(device)
+            # Generalized Advantage Estimation (GAE) is an exponentially-weighted estimator of an
+            # advantage function similar to TD(lambda). It substantially reduces the variance of 
+            # policy gradient estimates at the expense of bias.
+            last_gae_lam = 0    # this is the prev. generalized advantage estimate's lambda value
+            for t in reversed(range(args.num_steps)):
+                if t == args.num_steps -1:
+                    next_non_terminal = 1.0 - next_done
+                    next_values = next_value
+                else:
+                    next_non_terminal = 1.0 - ppoAgent.dones[t+1]
+                    next_values = ppoAgent.values[t+1]
+                delta = ppoAgent.rewards[t] + args.gamma * next_values * next_non_terminal - ppoAgent.values[t]
+                ppoAgent.advantages[t] = last_gae_lam = delta + args.gamma * args.gae_lambda * next_non_terminal * last_gae_lam
+            ppoAgent.returns = ppoAgent.advantages + ppoAgent.values
+
+        # optimize the policy (actor) and value (critic) networks
+        v_loss, pg_loss, entropy_loss, old_approx_kl, approx_kl, clipfracs, explained_var = ppoAgent.update(batch_size=args.batch_size, 
+                                                                                                            update_epochs=args.update_epochs,
+                                                                                                            minibatch_size=args.minibatch_size,
+                                                                                                            clip_coef=args.clip_coef,
+                                                                                                            norm_adv=args.norm_adv,
+                                                                                                            clip_vloss=args.clip_vloss, 
+                                                                                                            ent_coef=args.ent_coef,
+                                                                                                            vf_coef=args.vf_coef,
+                                                                                                            max_grad_norm=args.max_grad_norm,
+                                                                                                            target_kl=args.target_kl)
+        
+        # save model
+        if update % freq_save_model == 0:
+            print("Saving model at: ", path)
+            ppoAgent.save(path)
+            print("... model saved")
+        
+        # record rewards for plotting purposes
+        writer.add_scalar("charts/learning_rate", ppoAgent.optimizer.param_groups[0]["lr"], global_step)
+        writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
+        writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
+        writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
+        writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
+        writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
+        writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+        writer.add_scalar("losses/explained_variance", explained_var, global_step)
+        print("Steps per second:", int(global_step / (time.time() - start_time)))
+        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+        writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+    
+    envs.close()
+    writer.close()
 
 
 if __name__ == "__main__":
-    train()
+    freq_save_model = int(10)
+    dir = "ppo_pretrained"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    dir = dir + '/' + "NominalCartpole" + '/'
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 0)
+    print("Checkpoint for pretrained policies path: " + path)
+
+    train(freq_save_model, path)

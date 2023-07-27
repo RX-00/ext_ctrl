@@ -10,11 +10,46 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions.normal import Normal
+from torch.distributions import Normal
+from torch.distributions import MultivariateNormal
 from torch.utils.tensorboard import SummaryWriter
 
 import ext_ctrl_envs
 
+NUM_TRAJS = 23349
+
+'''
+========================================
+Helper function for the reward function
+========================================
+'''
+def calc_width_curve_weight(weight_w, weight_c, trajs):
+    return (weight_w / (trajs.max() - trajs.min()))**weight_c
+
+
+'''
+=======================================
+Function to select a random trajectory
+=======================================
+'''
+def sample_rand_traj():
+    # traj file numbering trackers
+    '''
+    NOTE: has to be the same as in the cartpole_LQR_trajs.py trajectory
+            collector program
+    '''
+    cart_positions = np.arange(-1.8, 1.9, 0.01).size # cart_positions 370
+    pend_positions = np.arange(-0.5, 0.6, 0.01).size # pend_positions 310
+
+    #i = random.randint(0, cart_positions - 1)
+    j = random.randint(0, NUM_TRAJS - 1)
+
+    traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
+    traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz')
+    
+    npzfile = np.load(traj_file_path)
+
+    return npzfile
 
 def parse_args():
     # fmt: off
@@ -109,20 +144,21 @@ class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            layer_init(nn.Linear(np.array(envs.observation_space.shape).prod(), 256)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(256, 256)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+            layer_init(nn.Linear(256, 1), std=1.0),
         )
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            layer_init(nn.Linear(np.array(envs.observation_space.shape).prod(), 256)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(256, 256)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
+            layer_init(nn.Linear(256, np.prod(envs.action_space.shape)), std=0.01),
         )
-        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
+        #self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.action_space.shape)))
+        self.actor_logstd = nn.Parameter(torch.zeros(np.prod(envs.action_space.shape)))
 
     def get_value(self, x):
         return self.critic(x)
@@ -130,11 +166,12 @@ class Agent(nn.Module):
     def get_action_and_value(self, x, action=None):
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
-        action_std = torch.exp(action_logstd)
-        probs = Normal(action_mean, action_std)
+        #action_std = torch.exp(action_logstd)
+        cov_mat = torch.diag(action_logstd).unsqueeze(dim=0)
+        probs = MultivariateNormal(action_mean, cov_mat)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
+        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
 
 
 if __name__ == "__main__":
@@ -167,17 +204,18 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
-    )
-    assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
+    #envs = gym.vector.SyncVectorEnv(
+    #    [make_env(args.env_id, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
+    #)
+    envs = gym.make(args.env_id)
+    assert isinstance(envs.action_space, gym.spaces.Box), "only continuous action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
-    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
+    obs = torch.zeros((args.num_steps, args.num_envs) + envs.observation_space.shape).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -191,7 +229,46 @@ if __name__ == "__main__":
     next_done = torch.zeros(args.num_envs).to(device)
     num_updates = args.total_timesteps // args.batch_size
 
+    # weights for reward function
+    weight_h = 1 # determines max reward val
+    weight_w = 2 # determines how close tracking needs to be to start rewarding -> higher = closer requirements
+    weight_c = 2 # determines how much reward to give when getting close to perfect tracking -> lower = need to be closer tracking to get full reward
+
     for update in range(1, num_updates + 1):
+        # getting sample trajectory
+        # select the trajectory to determine reward with
+        npzfile = sample_rand_traj()
+
+        # recorded trajectories
+        xs         = npzfile['xs']
+        x_dots     = npzfile['x_dots']
+        thetas     = npzfile['thetas']
+        theta_dots = npzfile['theta_dots']
+        us         = npzfile['us']        
+        
+
+        # calculate intermediate weights for reward function
+        w_x = calc_width_curve_weight(weight_w, weight_c, xs)
+        w_x_dot = calc_width_curve_weight(weight_w, weight_c, x_dots)
+        w_theta = calc_width_curve_weight(weight_w, weight_c, thetas)
+        w_theta_dot = calc_width_curve_weight(weight_w, weight_c, theta_dots)
+        w_u = calc_width_curve_weight(weight_w, weight_c, us)
+
+        '''
+        NOTE: Make sure it lines up with how ob vector is put together:
+                [x, theta, x_dot, theta_dot] + u
+        '''
+        interm_weights = [w_x, w_theta, w_x_dot, w_theta_dot, w_u]
+
+        # get and set init state for episode
+        sys_qpos = envs.unwrapped.data.qpos
+        sys_qvel = envs.unwrapped.data.qvel
+        sys_qpos[0] = xs[0]
+        sys_qpos[1] = thetas[0]
+        sys_qvel[0] = x_dots[0]
+        sys_qvel[1] = theta_dots[0]
+        #envs.set_state(sys_qpos, sys_qvel)
+
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (update - 1.0) / num_updates
@@ -224,7 +301,7 @@ if __name__ == "__main__":
                 # Skip the envs that are not done
                 if info is None:
                     continue
-                #print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
@@ -245,9 +322,9 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_obs = obs.reshape((-1,) + envs.observation_space.shape)
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
+        b_actions = actions.reshape((-1,) + envs.action_space.shape)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
@@ -320,7 +397,7 @@ if __name__ == "__main__":
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+        
         print("Steps per second:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 

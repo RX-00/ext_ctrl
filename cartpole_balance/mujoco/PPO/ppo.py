@@ -24,7 +24,7 @@ class ActorCritic(nn.Module):
         super().__init__()
         # value function
         self.critic = nn.Sequential(
-            self.layer_init(nn.Linear(state_dim, hl_size)),
+            self.layer_init(nn.Linear(np.array(state_dim).prod(), hl_size)),
             nn.Tanh(),
             self.layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
@@ -32,14 +32,14 @@ class ActorCritic(nn.Module):
         )
         # policy
         self.actor_mean = nn.Sequential(
-            self.layer_init(nn.Linear(state_dim, hl_size)),
+            self.layer_init(nn.Linear(np.array(state_dim).prod(), hl_size)),
             nn.Tanh(),
             self.layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
-            self.layer_init(nn.Linear(hl_size, action_dim, std=0.01)),
+            self.layer_init(nn.Linear(hl_size, np.prod(action_dim)), std=0.01),
         )
 
-        self.actor_logstd = nn.Parameter(torch.zeros(1, action_dim))
+        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(action_dim)))
     
     def get_value(self, x):
         return self.critic(x)
@@ -82,13 +82,82 @@ class PPO:
         self.rewards = torch.zeros((num_steps, num_envs)).to(device)
         self.dones = torch.zeros((num_steps, num_envs)).to(device)
         self.values = torch.zeros((num_steps, num_envs)).to(device)
-
+        self.advantages = torch.zeros_like(self.rewards).to(device)
+        self.returns = self.advantages + self.values
     
-    def update(self):
-    
-
     def flatten_batch(self):
-        
+        self.b_obs = self.obs.reshape((-1,) + self.state_dim)
+        self.b_logprobs = self.logprobs.reshape(-1)
+        self.b_actions = self.actions.reshape((-1,) + self.action_dim)
+        self.b_advantages = self.advantages.reshape(-1)
+        self.b_returns = self.returns.reshape(-1)
+        self.b_values = self.values.reshape(-1)
+
+    def update(self, batch_size, update_epochs, minibatch_size, clip_coef, norm_adv,
+               clip_vloss, ent_coef, vf_coef, max_grad_norm, target_kl):
+        # flatten the batch
+        self.flatten_batch()
+
+        b_inds = np.arange(batch_size)
+        clipfracs = []
+        for epoch in range(update_epochs):
+            np.random.shuffle(b_inds)
+            for start in range(0, batch_size, minibatch_size):
+                end = start + minibatch_size
+                mb_inds = b_inds[start:end]
+
+                _, newlogprob, entropy, newvalue = self.agent.get_action_and_value(self.b_obs[mb_inds], 
+                                                                                   self.b_actions[mb_inds])
+                logratio = newlogprob - self.b_logprobs[mb_inds]
+                ratio = logratio.exp()
+
+                with torch.no_grad():
+                    # calculate approx_kl http://joschu.net/blog/kl-approx.html
+                    old_approx_kl = (-logratio).mean()
+                    approx_kl = ((ratio - 1) - logratio).mean()
+                    clipfracs += [((ratio - 1.0).abs() > clip_coef).float().mean().item()]
+
+                mb_advantages = self.b_advantages[mb_inds]
+                if norm_adv:
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+
+                # Policy loss
+                pg_loss1 = -mb_advantages * ratio
+                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - clip_coef, 1 + clip_coef)
+                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+
+                # Value loss
+                newvalue = newvalue.view(-1)
+                if clip_vloss:
+                    v_loss_unclipped = (newvalue - self.b_returns[mb_inds]) ** 2
+                    v_clipped = self.b_values[mb_inds] + torch.clamp(
+                        newvalue - self.b_values[mb_inds],
+                        -clip_coef,
+                        clip_coef,
+                    )
+                    v_loss_clipped = (v_clipped - self.b_returns[mb_inds]) ** 2
+                    v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
+                    v_loss = 0.5 * v_loss_max.mean()
+                else:
+                    v_loss = 0.5 * ((newvalue - self.b_returns[mb_inds]) ** 2).mean()
+
+                entropy_loss = entropy.mean()
+                loss = pg_loss - ent_coef * entropy_loss + v_loss * vf_coef
+
+                self.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.agent.parameters(), max_grad_norm)
+                self.optimizer.step()
+
+            if target_kl is not None:
+                if approx_kl > target_kl:
+                    break
+
+        y_pred, y_true = self.b_values.cpu().numpy(), self.b_returns.cpu().numpy()
+        var_y = np.var(y_true)
+        explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+
+        return v_loss, pg_loss, entropy_loss, old_approx_kl, approx_kl, clipfracs, explained_var
 
     
     def save(self, path):
