@@ -84,6 +84,7 @@ class PPO:
         self.values = torch.zeros((num_steps, num_envs)).to(device)
         self.advantages = torch.zeros_like(self.rewards).to(device)
         self.returns = self.advantages + self.values
+
     
     def flatten_batch(self):
         self.b_obs = self.obs.reshape((-1,) + self.state_dim)
@@ -93,11 +94,18 @@ class PPO:
         self.b_returns = self.returns.reshape(-1)
         self.b_values = self.values.reshape(-1)
 
+
     def update(self, batch_size, update_epochs, minibatch_size, clip_coef, norm_adv,
                clip_vloss, ent_coef, vf_coef, max_grad_norm, target_kl):
         # flatten the batch
-        self.flatten_batch()
+        b_obs = self.obs.reshape((-1,) + self.state_dim)
+        b_logprobs = self.logprobs.reshape(-1)
+        b_actions = self.actions.reshape((-1,) + self.action_dim)
+        b_advantages = self.advantages.reshape(-1)
+        b_returns = self.returns.reshape(-1)
+        b_values = self.values.reshape(-1)
 
+        # Optimizing the policy and value network
         b_inds = np.arange(batch_size)
         clipfracs = []
         for epoch in range(update_epochs):
@@ -106,9 +114,8 @@ class PPO:
                 end = start + minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue = self.agent.get_action_and_value(self.b_obs[mb_inds], 
-                                                                                   self.b_actions[mb_inds])
-                logratio = newlogprob - self.b_logprobs[mb_inds]
+                _, newlogprob, entropy, newvalue = self.agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
+                logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
                 with torch.no_grad():
@@ -117,7 +124,7 @@ class PPO:
                     approx_kl = ((ratio - 1) - logratio).mean()
                     clipfracs += [((ratio - 1.0).abs() > clip_coef).float().mean().item()]
 
-                mb_advantages = self.b_advantages[mb_inds]
+                mb_advantages = b_advantages[mb_inds]
                 if norm_adv:
                     mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
@@ -129,17 +136,17 @@ class PPO:
                 # Value loss
                 newvalue = newvalue.view(-1)
                 if clip_vloss:
-                    v_loss_unclipped = (newvalue - self.b_returns[mb_inds]) ** 2
-                    v_clipped = self.b_values[mb_inds] + torch.clamp(
-                        newvalue - self.b_values[mb_inds],
+                    v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
+                    v_clipped = b_values[mb_inds] + torch.clamp(
+                        newvalue - b_values[mb_inds],
                         -clip_coef,
                         clip_coef,
                     )
-                    v_loss_clipped = (v_clipped - self.b_returns[mb_inds]) ** 2
+                    v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
                     v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
                     v_loss = 0.5 * v_loss_max.mean()
                 else:
-                    v_loss = 0.5 * ((newvalue - self.b_returns[mb_inds]) ** 2).mean()
+                    v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
                 entropy_loss = entropy.mean()
                 loss = pg_loss - ent_coef * entropy_loss + v_loss * vf_coef
@@ -153,7 +160,7 @@ class PPO:
                 if approx_kl > target_kl:
                     break
 
-        y_pred, y_true = self.b_values.cpu().numpy(), self.b_returns.cpu().numpy()
+        y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 

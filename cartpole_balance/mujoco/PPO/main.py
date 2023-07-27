@@ -10,13 +10,15 @@ import argparse
 import os
 import random
 import time
+from distutils.util import strtobool
 
 import gymnasium as gym
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
-from distutils.util import strtobool
-from datetime import datetime
 
 import ext_ctrl_envs
 
@@ -215,7 +217,7 @@ def train(freq_save_model, path):
         # bootstrap the value if not done (terminated)
         with torch.no_grad():
             next_value = ppoAgent.agent.get_value(next_obs).reshape(1, -1)
-            advantages = torch.zeros_like(ppoAgent.rewards).to(device)
+            ppoAgent.advantages = torch.zeros_like(ppoAgent.rewards).to(device)
             # Generalized Advantage Estimation (GAE) is an exponentially-weighted estimator of an
             # advantage function similar to TD(lambda). It substantially reduces the variance of 
             # policy gradient estimates at the expense of bias.
@@ -232,16 +234,83 @@ def train(freq_save_model, path):
             ppoAgent.returns = ppoAgent.advantages + ppoAgent.values
 
         # optimize the policy (actor) and value (critic) networks
-        v_loss, pg_loss, entropy_loss, old_approx_kl, approx_kl, clipfracs, explained_var = ppoAgent.update(batch_size=args.batch_size, 
-                                                                                                            update_epochs=args.update_epochs,
-                                                                                                            minibatch_size=args.minibatch_size,
-                                                                                                            clip_coef=args.clip_coef,
-                                                                                                            norm_adv=args.norm_adv,
-                                                                                                            clip_vloss=args.clip_vloss, 
-                                                                                                            ent_coef=args.ent_coef,
-                                                                                                            vf_coef=args.vf_coef,
-                                                                                                            max_grad_norm=args.max_grad_norm,
-                                                                                                            target_kl=args.target_kl)
+        # v_loss, pg_loss, entropy_loss, old_approx_kl, approx_kl, clipfracs, explained_var = ppoAgent.update(batch_size=args.batch_size, 
+        #                                                                                                     update_epochs=args.update_epochs,
+        #                                                                                                     minibatch_size=args.minibatch_size,
+        #                                                                                                     clip_coef=args.clip_coef,
+        #                                                                                                     norm_adv=args.norm_adv,
+        #                                                                                                     clip_vloss=args.clip_vloss, 
+        #                                                                                                     ent_coef=args.ent_coef,
+        #                                                                                                     vf_coef=args.vf_coef,
+        #                                                                                                     max_grad_norm=args.max_grad_norm,
+        #                                                                                                     target_kl=args.target_kl)
+        # flatten the batch
+        b_obs = ppoAgent.obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_logprobs = ppoAgent.logprobs.reshape(-1)
+        b_actions = ppoAgent.actions.reshape((-1,) + envs.single_action_space.shape)
+        b_advantages = ppoAgent.advantages.reshape(-1)
+        b_returns = ppoAgent.returns.reshape(-1)
+        b_values = ppoAgent.values.reshape(-1)
+
+        # Optimizing the policy and value network
+        b_inds = np.arange(args.batch_size)
+        clipfracs = []
+        for epoch in range(args.update_epochs):
+            np.random.shuffle(b_inds)
+            for start in range(0, args.batch_size, args.minibatch_size):
+                end = start + args.minibatch_size
+                mb_inds = b_inds[start:end]
+
+                _, newlogprob, entropy, newvalue = ppoAgent.agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
+                logratio = newlogprob - b_logprobs[mb_inds]
+                ratio = logratio.exp()
+
+                with torch.no_grad():
+                    # calculate approx_kl http://joschu.net/blog/kl-approx.html
+                    old_approx_kl = (-logratio).mean()
+                    approx_kl = ((ratio - 1) - logratio).mean()
+                    clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
+
+                mb_advantages = b_advantages[mb_inds]
+                if args.norm_adv:
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+
+                # Policy loss
+                pg_loss1 = -mb_advantages * ratio
+                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
+                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+
+                # Value loss
+                newvalue = newvalue.view(-1)
+                if args.clip_vloss:
+                    v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
+                    v_clipped = b_values[mb_inds] + torch.clamp(
+                        newvalue - b_values[mb_inds],
+                        -args.clip_coef,
+                        args.clip_coef,
+                    )
+                    v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
+                    v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
+                    v_loss = 0.5 * v_loss_max.mean()
+                else:
+                    v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
+
+                entropy_loss = entropy.mean()
+                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+
+                ppoAgent.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(ppoAgent.agent.parameters(), args.max_grad_norm)
+                ppoAgent.optimizer.step()
+
+            if args.target_kl is not None:
+                if approx_kl > args.target_kl:
+                    break
+
+        y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
+        var_y = np.var(y_true)
+        explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+
         
         # save model
         if update % freq_save_model == 0:

@@ -10,8 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions import Normal
-from torch.distributions import MultivariateNormal
+from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
 import ext_ctrl_envs
@@ -144,21 +143,20 @@ class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.observation_space.shape).prod(), 256)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 256)),
             nn.Tanh(),
             layer_init(nn.Linear(256, 256)),
             nn.Tanh(),
             layer_init(nn.Linear(256, 1), std=1.0),
         )
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.observation_space.shape).prod(), 256)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 256)),
             nn.Tanh(),
             layer_init(nn.Linear(256, 256)),
             nn.Tanh(),
-            layer_init(nn.Linear(256, np.prod(envs.action_space.shape)), std=0.01),
+            layer_init(nn.Linear(256, np.prod(envs.single_action_space.shape)), std=0.01),
         )
-        #self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.action_space.shape)))
-        self.actor_logstd = nn.Parameter(torch.zeros(np.prod(envs.action_space.shape)))
+        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
     def get_value(self, x):
         return self.critic(x)
@@ -166,12 +164,11 @@ class Agent(nn.Module):
     def get_action_and_value(self, x, action=None):
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
-        #action_std = torch.exp(action_logstd)
-        cov_mat = torch.diag(action_logstd).unsqueeze(dim=0)
-        probs = MultivariateNormal(action_mean, cov_mat)
+        action_std = torch.exp(action_logstd)
+        probs = Normal(action_mean, action_std)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
 
 if __name__ == "__main__":
@@ -195,6 +192,16 @@ if __name__ == "__main__":
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
+    dir = "ppo_pretrained"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    dir = dir + '/' + "NominalCartpole" + '/'
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 0)
+    print("Checkpoint for pretrained policies path: " + path)
+
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -204,18 +211,17 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    #envs = gym.vector.SyncVectorEnv(
-    #    [make_env(args.env_id, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
-    #)
-    envs = gym.make(args.env_id)
-    assert isinstance(envs.action_space, gym.spaces.Box), "only continuous action space is supported"
+    envs = gym.vector.SyncVectorEnv(
+        [make_env(args.env_id, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
+    )
+    assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
-    obs = torch.zeros((args.num_steps, args.num_envs) + envs.observation_space.shape).to(device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + envs.action_space.shape).to(device)
+    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -260,14 +266,12 @@ if __name__ == "__main__":
         '''
         interm_weights = [w_x, w_theta, w_x_dot, w_theta_dot, w_u]
 
-        # get and set init state for episode
-        sys_qpos = envs.unwrapped.data.qpos
-        sys_qvel = envs.unwrapped.data.qvel
-        sys_qpos[0] = xs[0]
-        sys_qpos[1] = thetas[0]
-        sys_qvel[0] = x_dots[0]
-        sys_qvel[1] = theta_dots[0]
-        #envs.set_state(sys_qpos, sys_qvel)
+        datas = envs.get_attr("data")
+        datas[0].qpos[0] = xs[0]
+        datas[0].qpos[1] = thetas[0]
+        datas[0].qvel[0] = x_dots[0]
+        datas[0].qvel[1] = theta_dots[0]
+        envs.set_attr("data", datas)
 
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
@@ -288,7 +292,16 @@ if __name__ == "__main__":
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
+            #next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
+            next_obs, reward, terminated, truncated, infos = envs.step_traj_track(action.cpu().numpy(),
+                                                                                  xs[step],
+                                                                                  x_dots[step],
+                                                                                  thetas[step],
+                                                                                  theta_dots[step],
+                                                                                  us[step],
+                                                                                  weight_h,
+                                                                                  interm_weights)
+            
             done = np.logical_or(terminated, truncated)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
@@ -301,7 +314,7 @@ if __name__ == "__main__":
                 # Skip the envs that are not done
                 if info is None:
                     continue
-                print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                #print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
@@ -322,9 +335,9 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs = obs.reshape((-1,) + envs.observation_space.shape)
+        b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((-1,) + envs.action_space.shape)
+        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
@@ -397,9 +410,13 @@ if __name__ == "__main__":
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        
+        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
         print("Steps per second:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+
+        # save model weights
+        if update % 10 == 0:
+            torch.save(agent.state_dict(), path)
 
     envs.close()
     writer.close()
