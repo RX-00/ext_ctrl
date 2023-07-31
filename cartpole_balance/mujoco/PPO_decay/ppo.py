@@ -72,21 +72,21 @@ class GaussActorCritic(nn.Module):
                                      action_std_dev_init * action_std_dev_init).to(device)
         # Actor network
         self.actor = nn.Sequential(
-                                   nn.Linear(state_dim, 64),
+                                   nn.Linear(state_dim, 256),
                                    nn.Tanh(),
-                                   nn.Linear(64, 64),
+                                   nn.Linear(256, 256),
                                    nn.Tanh(),
-                                   nn.Linear(64, action_dim),
+                                   nn.Linear(256, action_dim),
                                    nn.Tanh()
                                    )
 
         # Critic network
         self.critic = nn.Sequential(
-                                    nn.Linear(state_dim, 64),
+                                    nn.Linear(state_dim, 256),
                                     nn.Tanh(),
-                                    nn.Linear(64, 64),
+                                    nn.Linear(256, 256),
                                     nn.Tanh(),
-                                    nn.Linear(64, 1)
+                                    nn.Linear(256, 1)
                                    )
         if action_dim > 1:
             self.action_logstd = nn.Parameter(torch.zeros(1, np.prod(action_dim)))

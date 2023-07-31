@@ -14,6 +14,7 @@ from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
 import ext_ctrl_envs
+from sync_vec_env2 import SyncVectorEnv2
 
 NUM_TRAJS = 23349
 
@@ -37,11 +38,9 @@ def sample_rand_traj():
     NOTE: has to be the same as in the cartpole_LQR_trajs.py trajectory
             collector program
     '''
-    cart_positions = np.arange(-1.8, 1.9, 0.01).size # cart_positions 370
-    pend_positions = np.arange(-0.5, 0.6, 0.01).size # pend_positions 310
 
     #i = random.randint(0, cart_positions - 1)
-    j = random.randint(0, NUM_TRAJS - 1)
+    j = random.randint(int(NUM_TRAJS * 0/1), int((NUM_TRAJS - 1) * 1/1))
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
     traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz')
@@ -73,13 +72,13 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="NominalCartpole",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=1000000,
+    parser.add_argument("--total-timesteps", type=int, default=100000,
         help="total timesteps of the experiments")
-    parser.add_argument("--learning-rate", type=float, default=3e-4,
+    parser.add_argument("--learning-rate", type=float, default=1e-4,
         help="the learning rate of the optimizer")
     parser.add_argument("--num-envs", type=int, default=1,
         help="the number of parallel game environments")
-    parser.add_argument("--num-steps", type=int, default=2048,
+    parser.add_argument("--num-steps", type=int, default=500,
         help="the number of steps to run in each environment per policy rollout")
     parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
@@ -87,9 +86,9 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=32,
+    parser.add_argument("--num-minibatches", type=int, default=64,
         help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=10,
+    parser.add_argument("--update-epochs", type=int, default=20,
         help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
@@ -115,19 +114,20 @@ def parse_args():
 def make_env(env_id, idx, capture_video, run_name, gamma):
     def thunk():
         if capture_video:
-            env = gym.make(env_id, render_mode="rgb_array")
+            env = gym.make(env_id, render_mode="human")
         else:
             env = gym.make(env_id)
         env = gym.wrappers.FlattenObservation(env)  # deal with dm_control's Dict observation space
+        # NOTE: modified this (Record Episode Stats) to acomodate for step_traj_track
         env = gym.wrappers.RecordEpisodeStatistics(env)
-        if capture_video:
-            if idx == 0:
-                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        env = gym.wrappers.ClipAction(env)
-        env = gym.wrappers.NormalizeObservation(env)
-        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
-        env = gym.wrappers.NormalizeReward(env, gamma=gamma)
-        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+        #if capture_video:
+            #if idx == 0:
+            #    env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        #env = gym.wrappers.ClipAction(env)
+        #env = gym.wrappers.NormalizeObservation(env)
+        #env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
+        #env = gym.wrappers.NormalizeReward(env, gamma=gamma)
+        #env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
         return env
 
     return thunk
@@ -171,7 +171,7 @@ class Agent(nn.Module):
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
 
-if __name__ == "__main__":
+def train():
     args = parse_args()
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 0)
+    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 2)
     print("Checkpoint for pretrained policies path: " + path)
 
     # TRY NOT TO MODIFY: seeding
@@ -211,7 +211,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = gym.vector.SyncVectorEnv(
+    envs = SyncVectorEnv2(
         [make_env(args.env_id, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
@@ -252,7 +252,6 @@ if __name__ == "__main__":
         theta_dots = npzfile['theta_dots']
         us         = npzfile['us']        
         
-
         # calculate intermediate weights for reward function
         w_x = calc_width_curve_weight(weight_w, weight_c, xs)
         w_x_dot = calc_width_curve_weight(weight_w, weight_c, x_dots)
@@ -271,7 +270,7 @@ if __name__ == "__main__":
         datas[0].qpos[1] = thetas[0]
         datas[0].qvel[0] = x_dots[0]
         datas[0].qvel[1] = theta_dots[0]
-        envs.set_attr("data", datas)
+        envs.set_attr("data", datas) # NOTE && TODO: see if this actually changes the environments positions
 
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
@@ -293,6 +292,11 @@ if __name__ == "__main__":
 
             # TRY NOT TO MODIFY: execute the game and log data.
             #next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
+            # TODO:
+            #       "need to modify SyncVectorEnv, maybe need to make your own"
+            # OR
+            #       calculate reward here
+            
             next_obs, reward, terminated, truncated, infos = envs.step_traj_track(action.cpu().numpy(),
                                                                                   xs[step],
                                                                                   x_dots[step],
@@ -302,6 +306,7 @@ if __name__ == "__main__":
                                                                                   weight_h,
                                                                                   interm_weights)
             
+                                                                                  
             done = np.logical_or(terminated, truncated)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
@@ -312,7 +317,7 @@ if __name__ == "__main__":
 
             for info in infos["final_info"]:
                 # Skip the envs that are not done
-                if info is None:
+                if info is None or len(info) == 0:
                     continue
                 #print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
@@ -401,6 +406,17 @@ if __name__ == "__main__":
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
+        if info is None or len(info) == 0:
+            continue
+        else:
+            print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+            print("Steps per second:", int(global_step / (time.time() - start_time)))
+        # save model weights
+        if update % 10 == 0:
+            print("Saving agent actor model weights...")
+            torch.save(agent.state_dict(), path)
+            print(path)
+
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
@@ -410,13 +426,80 @@ if __name__ == "__main__":
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-        print("Steps per second:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-        # save model weights
-        if update % 10 == 0:
-            torch.save(agent.state_dict(), path)
 
     envs.close()
     writer.close()
+
+def test():
+    args = parse_args()
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+
+    dir = "ppo_pretrained"
+
+    dir = dir + '/' + "NominalCartpole" + '/'
+
+
+    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 2)
+    print("Checkpoint for pretrained policies path: " + path)
+
+
+    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+
+    # env setup
+    envs = SyncVectorEnv2(
+        [make_env(args.env_id, i, True, run_name, args.gamma) for i in range(args.num_envs)]
+    )
+    assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
+
+    agent = Agent(envs).to(device)
+    agent.load_state_dict(torch.load(path, map_location=lambda storage, loc : storage))
+
+    # TRY NOT TO MODIFY: start the game
+    global_step = 0
+    start_time = time.time()
+    next_obs, _ = envs.reset(seed=args.seed)
+    next_obs = torch.Tensor(next_obs).to(device)
+    next_done = torch.zeros(args.num_envs).to(device)
+    num_updates = args.total_timesteps // args.batch_size
+
+    # select the trajectory to determine reward with
+    npzfile = sample_rand_traj()
+
+    # recorded trajectories
+    xs         = npzfile['xs']
+    x_dots     = npzfile['x_dots']
+    thetas     = npzfile['thetas']
+    theta_dots = npzfile['theta_dots']
+    us         = npzfile['us']        
+
+    datas = envs.get_attr("data")
+    datas[0].qpos[0] = 0.2
+    datas[0].qpos[1] = 0.9
+    datas[0].qvel[0] = x_dots[0]
+    datas[0].qvel[1] = theta_dots[0]
+    envs.set_attr("data", datas) # NOTE && TODO: see if this actually changes the environments positions
+
+    for step in range(0, args.num_steps):
+        envs.set_attr("data", datas)
+        
+        global_step += 1 * args.num_envs
+
+        # ALGO LOGIC: action logic
+        with torch.no_grad():
+            action, logprob, _, value = agent.get_action_and_value(next_obs)
+
+        action = torch.zeros(1,1)
+
+        # TRY NOT TO MODIFY: execute the game and log data.
+        next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
+                                                                            
+        next_obs = torch.Tensor(next_obs).to(device)
+
+    envs.close()
+
+
+if __name__ == "__main__":
+    #train()
+    test()
