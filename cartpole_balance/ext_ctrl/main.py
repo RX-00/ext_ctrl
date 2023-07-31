@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 import ext_ctrl_envs
 from sync_vec_env2 import SyncVectorEnv2
 
-NUM_TRAJS = 23349
+NUM_TRAJS = 933
 
 '''
 ========================================
@@ -40,7 +40,7 @@ def sample_rand_traj():
     '''
 
     #i = random.randint(0, cart_positions - 1)
-    j = random.randint(int(NUM_TRAJS * 0/1), int((NUM_TRAJS - 1) * 1/1))
+    j = random.randint(int(NUM_TRAJS * 1/3), int((NUM_TRAJS - 1) * 2/3))
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
     traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz')
@@ -104,6 +104,8 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
+    parser.add_argument("--hl-size", type=float, default=64,
+        help="the hidden layer size for the NNs")
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
@@ -140,21 +142,21 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class Agent(nn.Module):
-    def __init__(self, envs):
+    def __init__(self, envs, hl_size):
         super().__init__()
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 256)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hl_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(256, 256)),
+            layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(256, 1), std=1.0),
+            layer_init(nn.Linear(hl_size, 1), std=1.0),
         )
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 256)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hl_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(256, 256)),
+            layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(256, np.prod(envs.single_action_space.shape)), std=0.01),
+            layer_init(nn.Linear(hl_size, np.prod(envs.single_action_space.shape)), std=0.01),
         )
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
@@ -216,7 +218,7 @@ def train():
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
-    agent = Agent(envs).to(device)
+    agent = Agent(envs, args.hl_size).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -269,20 +271,14 @@ def train():
         '''
         interm_weights = [w_x, w_theta, w_x_dot, w_theta_dot, w_u]
 
-        datas = envs.get_attr("data")
-        datas[0].qpos[0] = xs[0]
-        datas[0].qpos[1] = thetas[0]
-        datas[0].qvel[0] = x_dots[0]
-        datas[0].qvel[1] = theta_dots[0]
-        envs.set_attr("data", datas) # NOTE && TODO: see if this actually changes the environments positions
-
-        sys_qpos = envs.envs[0].unwrapped.data.qpos
-        sys_qvel = envs.envs[0].unwrapped.data.qvel
-        sys_qpos[0] = xs[0]
-        sys_qpos[1] = thetas[0]
-        sys_qvel[0] = x_dots[0]
-        sys_qvel[1] = theta_dots[0]
-        envs.envs[0].set_state(sys_qpos, sys_qvel)
+        for i in range(args.num_envs):
+            sys_qpos = envs.envs[i].unwrapped.data.qpos
+            sys_qvel = envs.envs[i].unwrapped.data.qvel
+            sys_qpos[0] = xs[0]
+            sys_qpos[1] = thetas[0]
+            sys_qvel[0] = x_dots[0]
+            sys_qvel[1] = theta_dots[0]
+            envs.envs[i].set_state(sys_qpos, sys_qvel)
 
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
@@ -318,6 +314,7 @@ def train():
                                                                                   weight_h,
                                                                                   interm_weights)
             
+            reward += np.exp2((step - 5) / 200)
                                                                                   
             done = np.logical_or(terminated, truncated)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
@@ -334,6 +331,9 @@ def train():
                 #print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+            
+            if (next_done):
+                break # terminate episode if fail
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -422,7 +422,7 @@ def train():
             continue
         else:
             print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-            print("Steps per second:", int(global_step / (time.time() - start_time)), " num trajs: ", int(num_traj))
+            print("Steps per sec:", int(global_step / (time.time() - start_time)), " trajs: ", int(num_traj))
         # save model weights
         if update % 10 == 0:
             print("Saving agent actor model weights...")
@@ -472,7 +472,7 @@ def test():
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
-    agent = Agent(envs).to(device)
+    agent = Agent(envs, args.hl_size).to(device)
     agent.load_state_dict(torch.load(path, map_location=lambda storage, loc : storage))
 
     # TRY NOT TO MODIFY: start the game
@@ -493,15 +493,16 @@ def test():
     theta_dots = npzfile['theta_dots']
     us         = npzfile['us']        
 
-    datas = envs.get_attr("data")
-    datas[0].qpos[0] = 0.2
-    datas[0].qpos[1] = 0.9
-    datas[0].qvel[0] = x_dots[0]
-    datas[0].qvel[1] = theta_dots[0]
-    envs.set_attr("data", datas) # NOTE && TODO: see if this actually changes the environments positions
+    for i in range(args.num_envs):
+        sys_qpos = envs.envs[i].unwrapped.data.qpos
+        sys_qvel = envs.envs[i].unwrapped.data.qvel
+        sys_qpos[0] = xs[0]
+        sys_qpos[1] = thetas[0]
+        sys_qvel[0] = x_dots[0]
+        sys_qvel[1] = theta_dots[0]
+        envs.envs[i].set_state(sys_qpos, sys_qvel)
 
     for step in range(0, args.num_steps):
-        envs.set_attr("data", datas)
         
         global_step += 1 * args.num_envs
 
@@ -509,16 +510,23 @@ def test():
         with torch.no_grad():
             action, logprob, _, value = agent.get_action_and_value(next_obs)
 
-        action = torch.zeros(1,1)
-
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
                                                                             
         next_obs = torch.Tensor(next_obs).to(device)
+
+        if step == 250:
+            sys_qpos = envs.envs[i].unwrapped.data.qpos
+            sys_qvel = envs.envs[i].unwrapped.data.qvel
+            sys_qpos[0] = xs[250]
+            sys_qpos[1] = thetas[250]
+            sys_qvel[0] = x_dots[250]
+            sys_qvel[1] = theta_dots[250]
+            envs.envs[i].set_state(sys_qpos, sys_qvel)    
 
     envs.close()
 
 
 if __name__ == "__main__":
     train()
-    #test()
+    test()
