@@ -39,10 +39,10 @@ def sample_rand_traj():
             collector program
     '''
 
-    j = random.randint(int(NUM_TRAJS * 1/3), int((NUM_TRAJS - 1) * 2/3))
+    j = random.randint(int(NUM_TRAJS * 0/3), int((NUM_TRAJS - 1) * 3/3))
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
-    traj_file_path = (traj_file_path + 'traj_' + str(NUM_TRAJS - 420) + '.npz')
+    traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz')
     
     npzfile = np.load(traj_file_path)
 
@@ -103,7 +103,7 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--hl-size", type=float, default=128, # 64
+    parser.add_argument("--hl-size", type=float, default=64, # 64
         help="the hidden layer size for the NNs")
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -204,7 +204,7 @@ def train():
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 2)
+    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 1)
     print("Checkpoint for pretrained policies path: " + path)
 
     # TRY NOT TO MODIFY: seeding
@@ -437,7 +437,7 @@ def train():
         
         if int(info['episode']['r']) > 2500:
             num_highscore += 1
-        if num_highscore > 10:
+        if num_highscore > args.num_steps * args.num_minibatches:
             print("quitting while the going is good to avoid catastrophic forgetting!")
             torch.save(agent.state_dict(), path)
             break
@@ -466,7 +466,7 @@ def test():
     dir = dir + '/' + "NominalCartpole" + '/'
 
 
-    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 2)
+    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 1)
     print("Checkpoint for pretrained policies path: " + path)
 
 
@@ -481,55 +481,47 @@ def test():
     agent = Agent(envs, args.hl_size).to(device)
     agent.load_state_dict(torch.load(path, map_location=lambda storage, loc : storage))
 
-    # TRY NOT TO MODIFY: start the game
-    global_step = 0
-    start_time = time.time()
-    next_obs, _ = envs.reset(seed=args.seed)
-    next_obs = torch.Tensor(next_obs).to(device)
-    next_done = torch.zeros(args.num_envs).to(device)
-    num_updates = args.total_timesteps // args.batch_size
-
-    # select the trajectory to determine reward with
-    npzfile = sample_rand_traj()
-
-    # recorded trajectories
-    xs         = npzfile['xs']
-    x_dots     = npzfile['x_dots']
-    thetas     = npzfile['thetas']
-    theta_dots = npzfile['theta_dots']
-    us         = npzfile['us']        
-
-    for i in range(args.num_envs):
-        sys_qpos = envs.envs[i].unwrapped.data.qpos
-        sys_qvel = envs.envs[i].unwrapped.data.qvel
-        sys_qpos[0] = xs[0]
-        sys_qpos[1] = thetas[0]
-        sys_qvel[0] = x_dots[0]
-        sys_qvel[1] = theta_dots[0]
-        envs.envs[i].set_state(sys_qpos, sys_qvel)
-
-    for step in range(0, args.num_steps):
-        
-        global_step += 1 * args.num_envs
-
-        # ALGO LOGIC: action logic
-        with torch.no_grad():
-            action, logprob, _, value = agent.get_action_and_value(next_obs)
-        
-
-        # TRY NOT TO MODIFY: execute the game and log data.
-        next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
-                                                                            
+    for i in range(10):
+        # TRY NOT TO MODIFY: start the game
+        global_step = 0
+        start_time = time.time()
+        next_obs, _ = envs.reset(seed=args.seed)
         next_obs = torch.Tensor(next_obs).to(device)
+        next_done = torch.zeros(args.num_envs).to(device)
+        num_updates = args.total_timesteps // args.batch_size
 
-        if step == 9999:
+        # select the trajectory to determine reward with
+        npzfile = sample_rand_traj()
+
+        # recorded trajectories
+        xs         = npzfile['xs']
+        x_dots     = npzfile['x_dots']
+        thetas     = npzfile['thetas']
+        theta_dots = npzfile['theta_dots']
+        us         = npzfile['us']        
+
+        for i in range(args.num_envs):
             sys_qpos = envs.envs[i].unwrapped.data.qpos
             sys_qvel = envs.envs[i].unwrapped.data.qvel
-            sys_qpos[0] = xs[250]
-            sys_qpos[1] = thetas[250]
-            sys_qvel[0] = x_dots[250]
-            sys_qvel[1] = theta_dots[250]
-            envs.envs[i].set_state(sys_qpos, sys_qvel)    
+            sys_qpos[0] = xs[0]
+            sys_qpos[1] = thetas[0]
+            sys_qvel[0] = x_dots[0]
+            sys_qvel[1] = theta_dots[0]
+            envs.envs[i].set_state(sys_qpos, sys_qvel)
+
+        for step in range(0, args.num_steps):
+            
+            global_step += 1 * args.num_envs
+
+            # ALGO LOGIC: action logic
+            with torch.no_grad():
+                action, logprob, _, value = agent.get_action_and_value(next_obs)
+            
+
+            # TRY NOT TO MODIFY: execute the game and log data.
+            next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
+                                                                                
+            next_obs = torch.Tensor(next_obs).to(device)
 
     envs.close()
 
