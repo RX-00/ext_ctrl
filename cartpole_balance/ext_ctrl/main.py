@@ -39,11 +39,10 @@ def sample_rand_traj():
             collector program
     '''
 
-    #i = random.randint(0, cart_positions - 1)
-    j = random.randint(int(NUM_TRAJS * 0/3), int((NUM_TRAJS - 1) * 3/3))
+    j = random.randint(int(NUM_TRAJS * 1/3), int((NUM_TRAJS - 1) * 2/3))
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
-    traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz')
+    traj_file_path = (traj_file_path + 'traj_' + str(NUM_TRAJS - 420) + '.npz')
     
     npzfile = np.load(traj_file_path)
 
@@ -86,7 +85,7 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=4,
+    parser.add_argument("--num-minibatches", type=int, default=2, # 4, lower minibatch means using more data of a single episode batch
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=10,
         help="the K epochs to update the policy")
@@ -104,7 +103,7 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--hl-size", type=float, default=128,
+    parser.add_argument("--hl-size", type=float, default=128, # 64
         help="the hidden layer size for the NNs")
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -151,14 +150,10 @@ class Agent(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(hl_size, hl_size)),
-            nn.Tanh(),
             layer_init(nn.Linear(hl_size, 1), std=1.0),
         )
         self.actor_mean = nn.Sequential(
             layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hl_size)),
-            nn.Tanh(),
-            layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
             layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
@@ -336,12 +331,12 @@ def train():
                 if info is None or len(info) == 0:
                     continue
                 #print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                #writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                #writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
             
             # NOTE: not sure if needed
-            if (next_done):
-                break # terminate episode if fail
+            #if (next_done):
+            #    break # terminate episode if fail
 
             # NOTE: maybe have the policy learn K?
             # NOTE: maybe have a reward function exp squared around 0
@@ -442,21 +437,21 @@ def train():
         
         if int(info['episode']['r']) > 2500:
             num_highscore += 1
-        if num_highscore > 3:
+        if num_highscore > 10:
             print("quitting while the going is good to avoid catastrophic forgetting!")
             torch.save(agent.state_dict(), path)
             break
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
-        writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
-        writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
-        writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-        writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
-        writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
-        writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-        writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
-        writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+        # writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
+        # writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
+        # writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
+        # writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
+        # writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
+        # writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
+        # writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+        # writer.add_scalar("losses/explained_variance", explained_var, global_step)
+        # writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
 
     envs.close()
@@ -527,7 +522,7 @@ def test():
                                                                             
         next_obs = torch.Tensor(next_obs).to(device)
 
-        if step == 250:
+        if step == 9999:
             sys_qpos = envs.envs[i].unwrapped.data.qpos
             sys_qvel = envs.envs[i].unwrapped.data.qvel
             sys_qpos[0] = xs[250]
@@ -540,5 +535,5 @@ def test():
 
 
 if __name__ == "__main__":
-    train()
-    #test()
+    #train()
+    test()
