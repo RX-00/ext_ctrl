@@ -40,7 +40,7 @@ def sample_rand_traj():
     '''
 
     #i = random.randint(0, cart_positions - 1)
-    j = random.randint(int(NUM_TRAJS * 1/3), int((NUM_TRAJS - 1) * 2/3))
+    j = random.randint(int(NUM_TRAJS * 0/3), int((NUM_TRAJS - 1) * 3/3))
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
     traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz')
@@ -86,7 +86,7 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=32,
+    parser.add_argument("--num-minibatches", type=int, default=4,
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=10,
         help="the K epochs to update the policy")
@@ -96,7 +96,7 @@ def parse_args():
         help="the surrogate clipping coefficient")
     parser.add_argument("--clip-vloss", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles whether or not to use a clipped loss for the value function, as per the paper.")
-    parser.add_argument("--ent-coef", type=float, default=0.0,
+    parser.add_argument("--ent-coef", type=float, default=0.01,
         help="coefficient of the entropy")
     parser.add_argument("--vf-coef", type=float, default=0.5,
         help="coefficient of the value function")
@@ -104,7 +104,7 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--hl-size", type=float, default=64,
+    parser.add_argument("--hl-size", type=float, default=128,
         help="the hidden layer size for the NNs")
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -149,10 +149,18 @@ class Agent(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
+            layer_init(nn.Linear(hl_size, hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, hl_size)),
+            nn.Tanh(),
             layer_init(nn.Linear(hl_size, 1), std=1.0),
         )
         self.actor_mean = nn.Sequential(
             layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
             layer_init(nn.Linear(hl_size, hl_size)),
             nn.Tanh(),
@@ -314,7 +322,6 @@ def train():
                                                                                   weight_h,
                                                                                   interm_weights)
             
-            reward += np.exp2((step - 5) / 200)
                                                                                   
             done = np.logical_or(terminated, truncated)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
@@ -332,8 +339,12 @@ def train():
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
             
+            # NOTE: not sure if needed
             if (next_done):
                 break # terminate episode if fail
+
+            # NOTE: maybe have the policy learn K?
+            # NOTE: maybe have a reward function exp squared around 0
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -509,6 +520,7 @@ def test():
         # ALGO LOGIC: action logic
         with torch.no_grad():
             action, logprob, _, value = agent.get_action_and_value(next_obs)
+        
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
@@ -529,4 +541,4 @@ def test():
 
 if __name__ == "__main__":
     train()
-    test()
+    #test()
