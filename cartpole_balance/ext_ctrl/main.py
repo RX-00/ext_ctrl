@@ -42,7 +42,7 @@ def sample_rand_traj():
     j = random.randint(int(NUM_TRAJS * 0/3), int((NUM_TRAJS - 1) * 3/3))
 
     traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
-    traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz')
+    traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz') # 82 is a good demo case
     
     npzfile = np.load(traj_file_path)
 
@@ -69,7 +69,7 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default="NominalCartpole",
+    parser.add_argument("--env-id", type=str, default="NonnonimalCartpole",
         help="the id of the environment")
     parser.add_argument("--total-timesteps", type=int, default=10000000,
         help="total timesteps of the experiments")
@@ -197,7 +197,7 @@ def train():
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
-    dir = "ppo_pretrained"
+    dir = "cartpole_balance_pretrained"
     if not os.path.exists(dir):
         os.makedirs(dir)
     dir = dir + '/' + "NominalCartpole" + '/'
@@ -461,12 +461,12 @@ def test():
     args = parse_args()
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
 
-    dir = "ppo_pretrained"
+    dir = "cartpole_balance_pretrained"
 
     dir = dir + '/' + "NominalCartpole" + '/'
 
-
-    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 1)
+    path = dir + "W_2hl_64n_2nmb_4punishrwrd.pth" # best performing one!
+    #path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 1)
     print("Checkpoint for pretrained policies path: " + path)
 
 

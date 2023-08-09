@@ -1,6 +1,6 @@
 '''
 
-Program of an LQR controller applied to a mujoco simulation of an
+Program of an swing-up controller applied to a mujoco simulation of an
 nominal inverted pendulum on a cart system.
 
 This program also features tha ability to record and store various trajectories
@@ -130,6 +130,10 @@ class TrajCollector():
     def apply_LQR_ctrlr(self, x):
         u = -np.dot(self.K, x)
         return u
+    
+
+    def swingup_ctrlr(self, x):
+        return x
     
 
     '''
@@ -275,14 +279,14 @@ if __name__ == "__main__":
     use "human" for onscreen render
     '''
 
-    r_mode = "depth_array"
+    r_mode = "human"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
-    nomCartpoleLQRTrajs.run_sim_collect_traj()
-    #nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
+    #nomCartpoleLQRTrajs.run_sim_collect_traj()
+    nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
     #nomCartpoleLQRTrajs.plot_state_vector()
 
     
-    file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
+    file_path = '/home/robo/ext_ctrl/cartpole_swingup/ext_ctrl/traj/trajs/'
     file_path = file_path + 'traj73.npz'
     npzfile = np.load(file_path)
 
