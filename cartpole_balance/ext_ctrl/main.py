@@ -68,10 +68,10 @@ def parse_args():
     parser.add_argument("--capture-video", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
-    # Algorithm specific arguments
+    # Algorithm specific arguments 
     parser.add_argument("--env-id", type=str, default="NonnonimalCartpole",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=10000000,
+    parser.add_argument("--total-timesteps", type=int, default=int(1e8),
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=1e-4,
         help="the learning rate of the optimizer")
@@ -204,7 +204,7 @@ def train():
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 1)
+    path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 0)
     print("Checkpoint for pretrained policies path: " + path)
 
     # TRY NOT TO MODIFY: seeding
@@ -246,6 +246,7 @@ def train():
     weight_c = 2 # determines how much reward to give when getting close to perfect tracking -> lower = need to be closer tracking to get full reward
 
     num_highscore = 0
+    num_forgets = 0
     num_traj = 0
 
     for update in range(1, num_updates + 1):
@@ -334,10 +335,6 @@ def train():
                 #writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 #writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
             
-            # NOTE: not sure if needed
-            #if (next_done):
-            #    break # terminate episode if fail
-
             # NOTE: maybe have the policy learn K?
             # NOTE: maybe have a reward function exp squared around 0
 
@@ -437,7 +434,10 @@ def train():
         
         if int(info['episode']['r']) > 2500:
             num_highscore += 1
-        if num_highscore > args.num_steps * args.num_minibatches:
+        if float(info['episode']['r']) == 0.:
+            num_forgets += 1
+
+        if num_highscore > args.num_steps * 2: #or num_forgets > args.num_steps*2:
             print("quitting while the going is good to avoid catastrophic forgetting!")
             torch.save(agent.state_dict(), path)
             break
@@ -466,7 +466,7 @@ def test():
     dir = dir + '/' + "NominalCartpole" + '/'
 
     path = dir + "W_2hl_64n_2nmb_4punishrwrd.pth" # best performing one!
-    #path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 1)
+    #path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 0)
     print("Checkpoint for pretrained policies path: " + path)
 
 

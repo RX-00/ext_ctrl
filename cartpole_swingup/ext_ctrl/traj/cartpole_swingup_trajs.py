@@ -160,6 +160,13 @@ class TrajCollector():
             self.theta_dots = np.append(self.theta_dots, self.state[3])
             self.us         = np.append(self.us,         u)
 
+            if (i == 150):
+                sys_qpos = self.env.unwrapped.data.qpos
+                sys_qvel = self.env.unwrapped.data.qvel
+                sys_qpos[0] = 0.9
+                sys_qpos[1] = -np.pi / 10
+                self.env.set_state(sys_qpos, sys_qvel)
+
 
     '''
     Run sim and collecting reference trajectories
@@ -283,9 +290,9 @@ if __name__ == "__main__":
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
     #nomCartpoleLQRTrajs.run_sim_collect_traj()
     nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
-    #nomCartpoleLQRTrajs.plot_state_vector()
+    nomCartpoleLQRTrajs.plot_state_vector()
 
-    
+    exit(0)
     file_path = '/home/robo/ext_ctrl/cartpole_swingup/ext_ctrl/traj/trajs/'
     file_path = file_path + 'traj73.npz'
     npzfile = np.load(file_path)
