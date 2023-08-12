@@ -6,6 +6,8 @@ from typing import Any, Callable, Iterator
 
 import numpy as np
 
+import ext_ctrl_envs
+
 from gymnasium import Env
 from gymnasium.experimental.vector.utils import (
     batch_space,
@@ -167,6 +169,43 @@ class SyncVectorEnv2(VectorEnv):
                 self._truncateds[i],
                 info,
             ) = env.step_traj_track(action, x, x_dot, theta, theta_dot, u, weight_h, interm_weights)
+
+            if self._terminateds[i] or self._truncateds[i]:
+                old_observation, old_info = observation, info
+                observation, info = env.reset()
+                info["final_observation"] = old_observation
+                info["final_info"] = old_info
+            observations.append(observation)
+            infos = self._add_info(infos, info, i)
+        self.observations = concatenate(
+            self.single_observation_space, observations, self.observations
+        )
+
+        return (
+            deepcopy(self.observations) if self.copy else self.observations,
+            np.copy(self._rewards),
+            np.copy(self._terminateds),
+            np.copy(self._truncateds),
+            infos,
+        )
+    
+    def step_traj_track_t(self, actions, x, x_dot, theta, theta_dot, u, weight_h, interm_weights, t):
+        """Steps through each of the environments returning the batched results.
+
+        Returns:
+            The batched environment step results
+        """
+        actions = iterate(self.action_space, actions)
+
+        observations, infos = [], {}
+        for i, (env, action) in enumerate(zip(self.envs, actions)):
+            (
+                observation,
+                self._rewards[i],
+                self._terminateds[i],
+                self._truncateds[i],
+                info,
+            ) = env.step_traj_track_t(action, x, x_dot, theta, theta_dot, u, weight_h, interm_weights, t)
 
             if self._terminateds[i] or self._truncateds[i]:
                 old_observation, old_info = observation, info

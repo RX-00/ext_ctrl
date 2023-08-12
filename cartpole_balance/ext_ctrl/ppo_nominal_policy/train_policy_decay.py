@@ -57,8 +57,8 @@ def sample_rand_traj():
     #i = random.randint(0, cart_positions - 1)
     j = random.randint(int(NUM_TRAJS / 4), int(NUM_TRAJS * 3 / 4))
 
-    traj_file_path = '/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs/'
-    traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz')
+    traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
+    traj_file_path = (traj_file_path + 'traj_' + str(1) + '.npz')
     
     npzfile = np.load(traj_file_path)
 
@@ -229,7 +229,8 @@ def train():
                                                             theta_dots[ts-1],
                                                             us[ts-1],
                                                             weight_h,
-                                                            interm_weights)
+                                                            interm_weights,
+                                                            ts)
             
             # save rewards and is_terminals
             ppoAgent.buffer.rewards.append(reward)

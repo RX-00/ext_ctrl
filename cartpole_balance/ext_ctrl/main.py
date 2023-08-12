@@ -69,7 +69,7 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments 
-    parser.add_argument("--env-id", type=str, default="NonnonimalCartpole",
+    parser.add_argument("--env-id", type=str, default="NominalCartpole",
         help="the id of the environment")
     parser.add_argument("--total-timesteps", type=int, default=int(1e8),
         help="total timesteps of the experiments")
@@ -308,7 +308,7 @@ def train():
             #       "need to modify SyncVectorEnv, maybe need to make your own"
             # OR
             #       calculate reward here
-            
+            interm_weights[4] = step # hack for time, TODO: figure out why the env don't update function in runtime
             next_obs, reward, terminated, truncated, infos = envs.step_traj_track(action.cpu().numpy(),
                                                                                   xs[step],
                                                                                   x_dots[step],
@@ -437,7 +437,7 @@ def train():
         if float(info['episode']['r']) == 0.:
             num_forgets += 1
 
-        if num_highscore > args.num_steps * 2: #or num_forgets > args.num_steps*2:
+        if num_highscore > args.num_steps: #or num_forgets > args.num_steps*2:
             print("quitting while the going is good to avoid catastrophic forgetting!")
             torch.save(agent.state_dict(), path)
             break
