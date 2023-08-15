@@ -32,9 +32,7 @@ import ext_ctrl_envs
 # getting riccati solver
 from scipy import linalg
 
-# trajectory optimization library
-from pytrajectory import TransitionProblem
-from sympy import cos, sin
+
 
 
 '''
@@ -44,21 +42,7 @@ Collecting & Saving Trajectories Class
 '''
 class TrajCollector():
 
-    def __init__(self, env_id, r_mode, ti, x_ti, tf, x_tf, u_ti, u_tf, constr, first_guess):
-        # boundary conditions
-        self.ti = ti
-        self.x_ti = x_ti
-        self.tf = tf
-        self.x_tf = x_tf
-        
-        self.u_ti = u_ti
-        self.u_tf = u_tf
-
-        self.first_guess = first_guess
-
-        # constraints
-        self.constr = constr
-
+    def __init__(self, env_id, r_mode):
         # object member variables
         self.env = gym.make(env_id, render_mode=r_mode)
         
@@ -147,11 +131,26 @@ class TrajCollector():
         u = -np.dot(self.K, x)
         return u
     
-    '''
-    Generate trajectory for swingup
-    '''
-    def swingup_ctrlr(self, x):
-        return x
+
+    def swingup_ctrlr(self, x, energy):
+        KE = energy[0]
+        PE = energy[1]
+        E = KE + PE
+
+        # desired energy, derived from total energy at desired fixed-point from system dynamics
+        E_d = 0.981
+        
+        # gains
+        k_E = -0.02
+        k_p = 0.2
+        k_d = 0.3
+        
+        # u = k_E * theta_dot * cos(theta) * (E-E_d) - k_p * x - k_d * x_dot
+        u = (k_E * x[3] * np.cos(x[1]) * (E - E_d) # TODO: decrease input as energy increases
+             - k_p * x[0] 
+             - k_d * x[2])
+        print(u)
+        return [u]
     
 
     '''
@@ -161,13 +160,19 @@ class TrajCollector():
         self.env.reset()
         u = 0
 
-        # NOTE: init pos of the pendulum cannot be larger magnitude than 0.45
-        # mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, self.env.unwrapped.data, 2)
+        mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, 
+                                    self.env.unwrapped.data, 3)
+        F = True
 
         for i in range(self.ep_len):
 
             if useCtrlr == True:
-                u = self.apply_LQR_ctrlr(self.state)
+                # apply LQR controller if within range
+                if np.abs(self.state[1] % (2*np.pi)) < 0.3 :
+                        u = self.apply_LQR_ctrlr(self.state)
+                # else apply energy shaping controller
+                else:
+                    u = self.swingup_ctrlr(self.state, self.env.unwrapped.data.energy)
 
             self.state, reward, terminated, truncated, info = self.env.step(action=u)
 
@@ -178,12 +183,12 @@ class TrajCollector():
             self.theta_dots = np.append(self.theta_dots, self.state[3])
             self.us         = np.append(self.us,         u)
 
-            if (i == 150):
-                sys_qpos = self.env.unwrapped.data.qpos
-                sys_qvel = self.env.unwrapped.data.qvel
-                sys_qpos[0] = 0.9
-                sys_qpos[1] = -np.pi / 10
-                self.env.set_state(sys_qpos, sys_qvel)
+            #if (i == 150):
+            #    sys_qpos = self.env.unwrapped.data.qpos
+            #    sys_qvel = self.env.unwrapped.data.qvel
+            #    sys_qpos[0] = 0.9
+            #    sys_qpos[1] = -np.pi / 10
+            #    self.env.set_state(sys_qpos, sys_qvel)
 
 
     '''
