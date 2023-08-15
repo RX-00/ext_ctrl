@@ -32,7 +32,9 @@ import ext_ctrl_envs
 # getting riccati solver
 from scipy import linalg
 
-
+# trajectory optimization library
+from pytrajectory import TransitionProblem
+from sympy import cos, sin
 
 
 '''
@@ -42,7 +44,21 @@ Collecting & Saving Trajectories Class
 '''
 class TrajCollector():
 
-    def __init__(self, env_id, r_mode):
+    def __init__(self, env_id, r_mode, ti, x_ti, tf, x_tf, u_ti, u_tf, constr, first_guess):
+        # boundary conditions
+        self.ti = ti
+        self.x_ti = x_ti
+        self.tf = tf
+        self.x_tf = x_tf
+        
+        self.u_ti = u_ti
+        self.u_tf = u_tf
+
+        self.first_guess = first_guess
+
+        # constraints
+        self.constr = constr
+
         # object member variables
         self.env = gym.make(env_id, render_mode=r_mode)
         
@@ -131,7 +147,9 @@ class TrajCollector():
         u = -np.dot(self.K, x)
         return u
     
-
+    '''
+    Generate trajectory for swingup
+    '''
     def swingup_ctrlr(self, x):
         return x
     
