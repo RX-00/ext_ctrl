@@ -128,6 +128,8 @@ class TrajCollector():
     Apply LQR controller
     '''
     def apply_LQR_ctrlr(self, x):
+        # undo the overflow on the pendulum position?
+        x[1] = x[1] % (2*np.pi)
         u = -np.dot(self.K, x)
         return u
     
@@ -141,6 +143,13 @@ class TrajCollector():
 
         # NOTE: init pos of the pendulum cannot be larger magnitude than 0.45
         # mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, self.env.unwrapped.data, 2)
+        #sys_qpos = self.env.unwrapped.data.qpos
+        #sys_qvel = self.env.unwrapped.data.qvel
+        #sys_qpos[0] = 0.2 # x
+        #sys_qpos[1] = 6.6 # theta
+        #sys_qvel[0] = -1. # x_dot
+        #sys_qvel[1] = 3. # theta_dot
+        #self.env.set_state(sys_qpos, sys_qvel)
 
         for i in range(self.ep_len):
 
@@ -273,12 +282,13 @@ if __name__ == "__main__":
     use "human" for onscreen render
     '''
 
-    r_mode = "depth_array"
+    r_mode = "human"
     nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
     #nomCartpoleLQRTrajs.run_sim_collect_traj()
-    #nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
-    #nomCartpoleLQRTrajs.plot_state_vector()
+    nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
+    nomCartpoleLQRTrajs.plot_state_vector()
 
+    exit(0)
     
     file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
     file_path = file_path + 'traj_73.npz'

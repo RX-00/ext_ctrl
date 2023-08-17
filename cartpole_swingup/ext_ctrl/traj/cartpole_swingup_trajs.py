@@ -133,22 +133,27 @@ class TrajCollector():
     
 
     def swingup_ctrlr(self, x, energy):
-        KE = energy[0]
-        PE = energy[1]
-        E = KE + PE
+        #E = KE + PE
+        E = energy[0] + energy[1]
 
         # desired energy, derived from total energy at desired fixed-point from system dynamics
         E_d = 0.981
         
         # gains
         k_E = -0.02
-        k_p = 0.2
-        k_d = 0.3
+        k_xp = 0.01
+        k_xd = 0.2
+
+        err = (E - E_d)
+        if (x[3] > 4):
+            err = 0
         
         # u = k_E * theta_dot * cos(theta) * (E-E_d) - k_p * x - k_d * x_dot
-        u = (k_E * x[3] * np.cos(x[1]) * (E - E_d) # TODO: decrease input as energy increases
-             - k_p * x[0] 
-             - k_d * x[2])
+        u = (k_E * x[3] * np.cos(x[1]) * (err) # TODO: decrease input as energy increases
+             - k_xp * x[0] 
+             - k_xd * x[2])
+        bound = 1
+        u = np.clip(u, -bound, bound)
         print(u)
         return [u]
     
@@ -157,21 +162,24 @@ class TrajCollector():
     Run simulation without collecting reference trajectories
     '''
     def run_sim(self, useCtrlr=True):
-        self.env.reset()
+        #self.env.reset()
         u = 0
 
         mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, 
                                     self.env.unwrapped.data, 3)
-        F = True
+        useLQR = False
 
         for i in range(self.ep_len):
-
+            if(np.abs(self.state[1] % (2*np.pi)) < 0.7 and i != 0):
+                useLQR = True
+                #print(self.state)
             if useCtrlr == True:
                 # apply LQR controller if within range
-                if np.abs(self.state[1] % (2*np.pi)) < 0.3 :
-                        u = self.apply_LQR_ctrlr(self.state)
+                if (useLQR):
+                    #print("using LQR")
+                    u = self.apply_LQR_ctrlr(self.state)
                 # else apply energy shaping controller
-                else:
+                elif(not useLQR):
                     u = self.swingup_ctrlr(self.state, self.env.unwrapped.data.energy)
 
             self.state, reward, terminated, truncated, info = self.env.step(action=u)
