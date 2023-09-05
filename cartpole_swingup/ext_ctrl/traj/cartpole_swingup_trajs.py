@@ -154,7 +154,6 @@ class TrajCollector():
              - k_xd * x[2])
         bound = 1
         u = np.clip(u, -bound, bound)
-        print(u)
         return [u]
     
 
@@ -210,15 +209,20 @@ class TrajCollector():
         print("Collecting trajectories...")
 
         # NOTE: one interval bigger (end val) than needed for purpose of including the prev val
-        cart_positions = np.arange(-1.8, 1.9, 0.01)  # NOTE: max and min of the railings of the cartpole
-        pend_positions = np.arange(-1.5, 1.6, 0.01) # NOTE: ~half circle range of pend, -pi/2 to pi/2 where 0 is pend up
+        cart_positions = np.arange(-1.0, 1.0, 0.01)  # NOTE: max and min of the railings of the cartpole
+        pend_positions = np.arange(2.14, 4.14, 0.01) # NOTE: ~half circle range of pend, -pi/2 to pi/2 where 0 is pend up
         i = 0
         j = 0
         indx = 0
+        init_state = [0, 0, 0, 0]
 
         for cart_pos_offset in cart_positions:
             for pend_pos_offset in pend_positions:
-                self.env.reset()
+                #self.env.reset()
+                u = 0
+                mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, 
+                                            self.env.unwrapped.data, 3)
+                useLQR = False
                 '''
                 vary the initial state of the cartpole
 
@@ -235,6 +239,7 @@ class TrajCollector():
 
                 self.env.set_state(sys_qpos, sys_qvel)
                 self.state = self.env.get_obs()
+                init_state = self.state
 
                 # Clear the numpy trajectories!
                 self.xs         = np.array(self.state[0])
@@ -244,7 +249,15 @@ class TrajCollector():
                 self.us         = np.array(0)
 
                 for time_step in range(self.ep_len):
-                    u = self.apply_LQR_ctrlr(self.state)
+                    if (np.abs(self.state[1] % (2*np.pi)) < 0.7 and time_step != 0):
+                        useLQR = True
+                        #print(self.state)
+                    if (useLQR):
+                        #print("using LQR")
+                        u = self.apply_LQR_ctrlr(self.state)
+                    # else apply energy shaping controller
+                    elif(not useLQR):
+                        u = self.swingup_ctrlr(self.state, self.env.unwrapped.data.energy)
 
                     self.state, reward, terminated, truncated, info = self.env.step(action=u)
 
@@ -259,15 +272,15 @@ class TrajCollector():
                     #       way to do this though.
 
                 # only save if end state was successful at balancing
-                if (abs(self.xs[500]) < 1e-04 and abs(self.thetas[500]) < 1e-04):
-                    # saving state vars
-                    file_path = "/home/robo/ext_ctrl/cartpole/ext_ctrl/traj/trajs1/"
+                if (abs(self.xs[500]) < 1e-04 and abs(self.thetas[500] % (2*np.pi)) < 1e-04):                    # saving state vars
+                    file_path = "/home/robo/ext_ctrl/cartpole_swingup/ext_ctrl/traj/trajs/"
                     file_path = (file_path + 'traj_' + str(indx) + '.npz')
                     np.savez(file_path, xs=self.xs,
                                         x_dots=self.x_dots,
                                         thetas=self.thetas,
                                         theta_dots=self.theta_dots,
                                         us=self.us)
+                    print("good! ", indx, "x: ", init_state)
                     indx += 1
                 j = j + 1
             i = i + 1
@@ -317,15 +330,15 @@ if __name__ == "__main__":
     use "human" for onscreen render
     '''
 
-    r_mode = "human"
-    nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
+    r_mode = "depth_array"
+    #nomCartpoleLQRTrajs = TrajCollector(env_id, r_mode)
+    #nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
     #nomCartpoleLQRTrajs.run_sim_collect_traj()
-    nomCartpoleLQRTrajs.run_sim(useCtrlr=True)
-    nomCartpoleLQRTrajs.plot_state_vector()
+    #nomCartpoleLQRTrajs.plot_state_vector()
 
-    exit(0)
+    #exit(0)
     file_path = '/home/robo/ext_ctrl/cartpole_swingup/ext_ctrl/traj/trajs/'
-    file_path = file_path + 'traj73.npz'
+    file_path = file_path + 'traj_132.npz'
     npzfile = np.load(file_path)
 
     xs         = npzfile['xs']
@@ -333,6 +346,8 @@ if __name__ == "__main__":
     thetas     = npzfile['thetas']
     theta_dots = npzfile['theta_dots']
     us         = npzfile['us']
+
+    print(xs[0], x_dots[0], thetas[0], theta_dots[0])
 
     fig, axs = plt.subplots(5, 1, constrained_layout=True)
     fig.suptitle('Cartpole state vector', fontsize=16)

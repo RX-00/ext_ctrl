@@ -7,5 +7,7 @@
 			"path": "../ext_ctrl_envs"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.terminal.executeInFileDir": false
+	}
 }
