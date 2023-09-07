@@ -71,7 +71,7 @@ def parse_args():
     # Algorithm specific arguments 
     parser.add_argument("--env-id", type=str, default="NominalCartpole",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=int(1e8),
+    parser.add_argument("--total-timesteps", type=int, default=int(1e7),
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=1e-4,
         help="the learning rate of the optimizer")
@@ -85,7 +85,7 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=2, # 4, lower minibatch means using more data of a single episode batch
+    parser.add_argument("--num-minibatches", type=int, default=2, # 4, lower minibatch means using more data of a single episode batch, o/w won't learn
         help="the number of mini-batches")
     parser.add_argument("--update-epochs", type=int, default=10,
         help="the K epochs to update the policy")
@@ -103,7 +103,7 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
-    parser.add_argument("--hl-size", type=float, default=128,
+    parser.add_argument("--hl-size", type=float, default=256,
         help="the hidden layer size for the NNs")
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -426,12 +426,12 @@ def train():
             torch.save(agent.state_dict(), path)
             print(path)
         
-        if int(info['episode']['r']) > 2500:
+        if int(info['episode']['r']) > 2400:
             num_highscore += 1
         if float(info['episode']['r']) == 0.:
             num_forgets += 1
 
-        if num_highscore > args.num_steps: #or num_forgets > args.num_steps*2:
+        if num_highscore > args.num_steps or num_forgets > NUM_TRAJS * 1.25:
             print("quitting while the going is good to avoid catastrophic forgetting!")
             torch.save(agent.state_dict(), path)
             break
