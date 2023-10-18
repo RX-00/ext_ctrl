@@ -123,26 +123,27 @@ class TrajCollector():
 
         # Compute the feedback gain matrix K.
         self.K = np.linalg.inv(self.R + self.B.T @ self.P @ self.B) @ self.B.T @ self.P @ self.A
+        print(self.K)
 
     '''
     Apply LQR controller
     '''
     def apply_LQR_ctrlr(self, x):
         # undo the overflow on the pendulum position?
-        x[1] = x[1] % (2*np.pi)
+        #x[1] = x[1] % (2*np.pi)
         u = -np.dot(self.K, x)
         return u
-    
+
 
     '''
     Run simulation without collecting reference trajectories
     '''
     def run_sim(self, useCtrlr=True):
         self.env.reset()
-        u = 0
+        #u = 0
 
         # NOTE: init pos of the pendulum cannot be larger magnitude than 0.45
-        # mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, self.env.unwrapped.data, 2)
+        #mujoco.mj_resetDataKeyframe(self.env.unwrapped.model, self.env.unwrapped.data, 0)
         #sys_qpos = self.env.unwrapped.data.qpos
         #sys_qvel = self.env.unwrapped.data.qvel
         #sys_qpos[0] = 0.2 # x
