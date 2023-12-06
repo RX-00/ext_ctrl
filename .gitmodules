@@ -1,3 +1,6 @@
 [submodule "eqs_of_motion"]
 	path = cartpole/eqs_of_motion
 	url = https://github.com/RX-00/cartpole_controllers
+[submodule "anassinator_ilqr"]
+	path = anassinator_ilqr
+	url = git@github.com:RX-00/anassinator_ilqr.git
