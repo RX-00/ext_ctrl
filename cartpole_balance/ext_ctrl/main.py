@@ -69,7 +69,7 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments 
-    parser.add_argument("--env-id", type=str, default="NominalCartpole",
+    parser.add_argument("--env-id", type=str, default="NominalCartpole", # og: NominalCartpole
         help="the id of the environment")
     parser.add_argument("--total-timesteps", type=int, default=int(1e8),
         help="total timesteps of the experiments")
@@ -174,6 +174,43 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
+
+
+class Agent_(nn.Module):
+    def __init__(self, envs, hl_size):
+        super().__init__()
+        self.critic = nn.Sequential(
+            layer_init(nn.Linear(np.array(4).prod(), hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, 1), std=1.0),
+        )
+        self.actor_mean = nn.Sequential(
+            layer_init(nn.Linear(np.array(4).prod(), hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, hl_size)),
+            nn.Tanh(),
+            layer_init(nn.Linear(hl_size, np.prod(1)), std=0.01),
+        )
+        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(1)))
+
+    def get_value(self, x):
+        return self.critic(x)
+
+    def get_action_and_value(self, x, action=None):
+        action_mean = self.actor_mean(x)
+        action_logstd = self.actor_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
+        probs = Normal(action_mean, action_std)
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
+
 
 
 def train():
@@ -526,6 +563,80 @@ def test():
     envs.close()
 
 
+def test_nonnominal():
+    args = parse_args()
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+
+    dir = "cartpole_balance_pretrained"
+
+    dir = dir + '/' + "NominalCartpole" + '/'
+
+    path = dir + "W_2hl_64n_2nmb_4punishrwrd.pth" # best performing one!
+    #path = dir + "PPO_{}_{}.pth".format("NominalCartpole", 0)
+    print("Checkpoint for pretrained policies path: " + path)
+
+
+    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+
+    # env setup
+    #envs = SyncVectorEnv2(
+    #    [make_env(args.env_id, i, True, run_name, args.gamma) for i in range(args.num_envs)]
+    #)
+    #assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
+    env_id = "NonnonimalCartpole"
+    env = gym.make(env_id, render_mode="human")
+
+    #agent = Agent(envs, args.hl_size).to(device)
+    agent = Agent_(env, args.hl_size).to(device)
+    agent.load_state_dict(torch.load(path, map_location=lambda storage, loc : storage))
+
+    for i in range(10):
+        # TRY NOT TO MODIFY: start the game
+        global_step = 0
+        start_time = time.time()
+        next_obs, _ = env.reset(seed=args.seed)
+        next_obs = torch.Tensor(next_obs).to(device)
+        next_done = torch.zeros(args.num_envs).to(device)
+        num_updates = args.total_timesteps // args.batch_size
+
+        # select the trajectory to determine reward with
+        npzfile = sample_rand_traj()
+
+        # recorded trajectories
+        xs         = npzfile['xs']
+        x_dots     = npzfile['x_dots']
+        thetas     = npzfile['thetas']
+        theta_dots = npzfile['theta_dots']
+        us         = npzfile['us']        
+
+        for i in range(args.num_envs):
+            sys_qpos = env.unwrapped.data.qpos
+            sys_qvel = env.unwrapped.data.qvel
+            sys_qpos[0] = xs[0]
+            sys_qpos[1] = thetas[0]
+            sys_qvel[0] = x_dots[0]
+            sys_qvel[1] = theta_dots[0]
+            env.set_state(sys_qpos, sys_qvel)
+
+        for step in range(0, args.num_steps):
+            
+            global_step += 1 * args.num_envs
+
+            # ALGO LOGIC: action logic
+            with torch.no_grad():
+                action, logprob, _, value = agent.get_action_and_value(next_obs)
+            
+
+            # TRY NOT TO MODIFY: execute the game and log data.
+            next_obs, reward, terminated, truncated, infos = env.step(action.cpu().numpy())
+                                                                                
+            next_obs = torch.Tensor(next_obs).to(device)
+
+    #envs.close()
+    env.close()
+
+
 if __name__ == "__main__":
     #train()
-    test()
+    #test()
+    test_nonnominal()
