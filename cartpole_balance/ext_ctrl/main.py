@@ -204,6 +204,9 @@ class Agent_(nn.Module):
 
     def get_action_and_value(self, x, action=None):
         action_mean = self.actor_mean(x)
+        # make sure the dimension of a single action_mean is torch.tensor([[ ]])
+        if len(action_mean.shape) < 2:
+            action_mean = torch.tensor([[action_mean.item()]])
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
         probs = Normal(action_mean, action_std)
