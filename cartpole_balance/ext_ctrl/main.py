@@ -6,6 +6,7 @@ import time
 from distutils.util import strtobool
 
 import gymnasium as gym
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -521,7 +522,15 @@ def test():
     agent = Agent(envs, args.hl_size).to(device)
     agent.load_state_dict(torch.load(path, map_location=lambda storage, loc : storage))
 
-    for i in range(10):
+    # record state variables
+    next_obs, _ = envs.reset(seed=args.seed)
+    next_obs = torch.Tensor(next_obs).to(device)
+    rec_xs = np.array(next_obs[0][0])
+    rec_x_dots = np.array(next_obs[0][2])
+    rec_thetas = np.array(next_obs[0][1])
+    rec_theta_dots = np.array(next_obs[0][3])
+
+    for i in range(1):
         # TRY NOT TO MODIFY: start the game
         global_step = 0
         start_time = time.time()
@@ -556,14 +565,44 @@ def test():
             # ALGO LOGIC: action logic
             with torch.no_grad():
                 action, logprob, _, value = agent.get_action_and_value(next_obs)
-            
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
                                                                                 
             next_obs = torch.Tensor(next_obs).to(device)
 
+            # record
+            rec_xs         = np.append(rec_xs,         next_obs[0][0])
+            rec_x_dots     = np.append(rec_x_dots,     next_obs[0][2])
+            rec_thetas     = np.append(rec_thetas,     next_obs[0][1])
+            rec_theta_dots = np.append(rec_theta_dots, next_obs[0][3])
+
     envs.close()
+
+    fig, axs = plt.subplots(4, 1, constrained_layout=True)
+    fig.suptitle('Cartpole state vector', fontsize=16)
+
+    axs[0].plot(rec_xs)
+    axs[0].set_title('Cart position')
+    axs[0].set_xlabel('Time step')
+    axs[0].set_ylabel('m')
+
+    axs[1].plot(rec_x_dots)
+    axs[1].set_title('Cart velocity')
+    axs[1].set_xlabel('Time step')
+    axs[1].set_ylabel('m/s')
+
+    axs[2].plot(rec_thetas)
+    axs[2].set_title('Pendulum angular position')
+    axs[2].set_xlabel('Time step')
+    axs[2].set_ylabel('Radians')
+
+    axs[3].plot(rec_theta_dots)
+    axs[3].set_title('Pendulum angular velocity')
+    axs[3].set_xlabel('Time step')
+    axs[3].set_ylabel('Radians/sec')
+
+    plt.show()
 
 
 def test_nonnominal():
@@ -593,7 +632,15 @@ def test_nonnominal():
     agent = Agent_(env, args.hl_size).to(device)
     agent.load_state_dict(torch.load(path, map_location=lambda storage, loc : storage))
 
-    for i in range(10):
+    # record state variables
+    next_obs, _ = env.reset(seed=args.seed)
+    next_obs = torch.Tensor(next_obs).to(device)
+    rec_xs = np.array(next_obs[0])
+    rec_x_dots = np.array(next_obs[2])
+    rec_thetas = np.array(next_obs[1])
+    rec_theta_dots = np.array(next_obs[3])
+
+    for i in range(1):
         # TRY NOT TO MODIFY: start the game
         global_step = 0
         start_time = time.time()
@@ -635,11 +682,42 @@ def test_nonnominal():
                                                                                 
             next_obs = torch.Tensor(next_obs).to(device)
 
+            # record
+            rec_xs         = np.append(rec_xs,         next_obs[0])
+            rec_x_dots     = np.append(rec_x_dots,     next_obs[2])
+            rec_thetas     = np.append(rec_thetas,     next_obs[1])
+            rec_theta_dots = np.append(rec_theta_dots, next_obs[3])
+
     #envs.close()
     env.close()
+
+    fig, axs = plt.subplots(4, 1, constrained_layout=True)
+    fig.suptitle('Cartpole state vector', fontsize=16)
+
+    axs[0].plot(rec_xs)
+    axs[0].set_title('Cart position')
+    axs[0].set_xlabel('Time step')
+    axs[0].set_ylabel('m')
+
+    axs[1].plot(rec_x_dots)
+    axs[1].set_title('Cart velocity')
+    axs[1].set_xlabel('Time step')
+    axs[1].set_ylabel('m/s')
+
+    axs[2].plot(rec_thetas)
+    axs[2].set_title('Pendulum angular position')
+    axs[2].set_xlabel('Time step')
+    axs[2].set_ylabel('Radians')
+
+    axs[3].plot(rec_theta_dots)
+    axs[3].set_title('Pendulum angular velocity')
+    axs[3].set_xlabel('Time step')
+    axs[3].set_ylabel('Radians/sec')
+
+    plt.show()
 
 
 if __name__ == "__main__":
     #train()
-    #test()
-    test_nonnominal()
+    test()
+    #test_nonnominal()
