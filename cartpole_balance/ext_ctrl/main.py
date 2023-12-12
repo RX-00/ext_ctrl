@@ -42,7 +42,7 @@ def sample_rand_traj():
 
     j = random.randint(int(NUM_TRAJS * 0/3), int((NUM_TRAJS - 1) * 3/3))
 
-    traj_file_path = '/home/robo/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
+    traj_file_path = '/home/roy/ext_ctrl/cartpole_balance/ext_ctrl/traj/trajs/'
     traj_file_path = (traj_file_path + 'traj_' + str(j) + '.npz') # 82 is a good demo case
     
     npzfile = np.load(traj_file_path)
