@@ -2,7 +2,7 @@
 Repo for work on extending state-space control methods with reinforcement learning methods.
 > We present a method to combine the advantages of the separate approaches for control, that being Reinforcement Learning (RL) and optimal control, into a single controller. Optimal control allows for precise movement and behavior but is restricted to a specific modelled system. RL is capable of being more generalizable to different environments but it is difficult to train a policy to perform specific desired motions. In this work we gather trajectories from an optimal linear quadratic regulator (LQR) controller for which an RL policy is trained on. We refer the resulting policy as an extended controller and evaluate its performance on the environment the LQR trajectories were taken from along with a novel environment that the extended controller has never experienced. The extended controller is able to exhibit the advantage of RL's generalizability while also capturing optimal controllers' smooth and precise movement.
 
-TODO/NOTE: clean up the English to be more elegant on the abstract
+TODO: clean up the English to be more elegant on the abstract
 
 - Break down on trajectory optimization vs endpoint optimization (optimal control)
 - What does the policy learn specifically and what it's supposed to do?
